@@ -31,8 +31,10 @@ def apply_sidebar_width() -> None:
 
 
 def render_sidebar_nav() -> None:
-    """Dibuja el encabezado del sidebar con título arriba y links de navegación debajo."""
-    st.sidebar.title("🪚 Verificador")
+    """Dibuja el encabezado del sidebar con logo arriba y links de navegación debajo."""
+    from pathlib import Path
+    logo = Path(__file__).parent / "logo_cubro.png"
+    st.sidebar.image(str(logo))
     st.sidebar.page_link("app.py", label="🔍 Verificador de Fichero")
     st.sidebar.page_link("pages/2_Cola_Global.py", label="📋 Ficheros pendientes")
     st.sidebar.markdown("---")
