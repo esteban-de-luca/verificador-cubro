@@ -510,7 +510,8 @@ def page_verificar() -> None:
 
     st.markdown("---")
 
-    if st.button("🔍 Verificar proyecto", type="primary", use_container_width=True):
+    col_btn, _ = st.columns([1, 2])
+    if col_btn.button("🔍 Verificar proyecto", type="primary", use_container_width=True):
         st.session_state.informe = None
         with st.spinner(f"Descargando y verificando {proyecto['nombre_limpio']}…"):
             try:
