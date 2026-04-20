@@ -18,6 +18,15 @@ import config
 
 
 @lru_cache(maxsize=1)
+def obtener_credenciales() -> service_account.Credentials:
+    """Credenciales de la Service Account (cacheadas, thread-safe para refresh)."""
+    info = config.google_credentials_info()
+    return service_account.Credentials.from_service_account_info(
+        info, scopes=config.DRIVE_SCOPES
+    )
+
+
+@lru_cache(maxsize=1)
 def obtener_servicio_drive() -> Any:
     """
     Construye y devuelve un objeto servicio Drive v3 autenticado con la
@@ -32,11 +41,7 @@ def obtener_servicio_drive() -> Any:
     Raises:
         RuntimeError: si las credenciales no están configuradas.
     """
-    info = config.google_credentials_info()
-    credenciales = service_account.Credentials.from_service_account_info(
-        info, scopes=config.DRIVE_SCOPES
-    )
-    return build("drive", "v3", credentials=credenciales, cache_discovery=False)
+    return build("drive", "v3", credentials=obtener_credenciales(), cache_discovery=False)
 
 
 def resetear_servicio_cache() -> None:
