@@ -1,0 +1,52 @@
+# =============================================================================
+# reglas_cnc.yaml — Catálogo de patrones de Observaciones CNC
+# Verificador de Ficheros de Corte · CUBRO Design SL
+# Arquitectura v3.0 · Abril 2026
+#
+# Cada observación CNC del texto de la OT se compara contra estos patrones.
+# Las observaciones NO reconocidas generan WARN con el texto íntegro
+# y nunca se ignoran (se incluyen en el campo "Notas" de Notion).
+#
+# Campos por patrón:
+#   patron       : texto con placeholders {variable} para captura flexible
+#   tipo         : identificador semántico (mayúsculas y guión bajo)
+#   justifica_check: ID de check que esta observación justifica/excusa,
+#                    o [] si es informativa sin impacto en checks
+# =============================================================================
+
+excepciones:
+  - patron: "retal de {material}"
+    tipo: RETAL
+    justifica_check: C-60
+
+  - patron: "retal utilizado de {material}"
+    tipo: RETAL_UTILIZADO
+    justifica_check: C-60
+
+  - patron: "retales generados"
+    tipo: RETALES_GENERADOS
+    justifica_check: C-60
+
+  - patron: "sin mecanizar"
+    tipo: SIN_MECANIZADO
+    justifica_check: C-61
+
+  - patron: "{id}: {n} herrajes ocultos"
+    tipo: HERRAJES_BALDA
+    justifica_check: C-26
+
+  - patron: "{id}: redondeo R{valor}mm"
+    tipo: ENCASTRE_ENC
+    justifica_check: []
+
+  - patron: "cantear {id}"
+    tipo: CANTEAR_RDP
+    justifica_check: []
+
+  - patron: "enviar en estructura {tipo}"
+    tipo: ENVIO_ESTRUCTURA
+    justifica_check: C-55
+
+  - patron: "{id}: bisagras en posicion especial"
+    tipo: BISAGRAS_ESPECIAL
+    justifica_check: []

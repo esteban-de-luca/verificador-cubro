@@ -1,0 +1,293 @@
+# =============================================================================
+# reglas.yaml — Fuente de verdad de todas las reglas de negocio
+# Verificador de Ficheros de Corte · CUBRO Design SL
+# Arquitectura v3.0 · Abril 2026
+#
+# TABLA DE ROUTING DE CAMBIOS:
+#   Categoría A (valor): editar aquí, sin tocar Python
+#   Categoría B (nuevo check): YAML + nueva función + engine.py + tests
+#   Categoría C (lógica): solo Python + tests antes y después
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# MATERIALES (Check C-15)
+# Regla crítica: PLY → solo LAM o LIN · MDF → solo LAC o WOO
+# -----------------------------------------------------------------------------
+materiales:
+  PLY:
+    gamas_validas: [LAM, LIN]
+    espesores_mm:
+      LAM: 19
+      LIN: 20
+  MDF:
+    gamas_validas: [LAC, WOO]
+    espesores_mm:
+      LAC: 18
+      WOO: 19
+
+# -----------------------------------------------------------------------------
+# ACABADOS (Check C-16)
+# Para añadir un nuevo acabado: añadir una línea aquí — 2 minutos, cero Python
+# -----------------------------------------------------------------------------
+acabados:
+  LAC:
+    - Zafiro
+    - Negro
+    - Ave
+    - Curry
+    - Roto
+    - Marga
+    - Celeste
+    - Humo
+    - Blanco
+    - Argil
+    - Crema
+    - Seda
+    - Noche
+    - Tinta
+    - Pino
+  WOO:
+    - Roble
+    - Cerezo
+    - Nogal
+  LAM:
+    - Blanco
+    - Pale
+    - Rosa
+    - Cadaques
+    - Caraibi
+    - Sable
+    - Agave
+    - Sahara
+    - Graphite
+    - Fes
+    - Noir
+    - Brick
+    - Perle
+    - Blush
+    - Comodoro
+    - Marble Green
+    - Metal
+  LIN:
+    - Mushroom
+    - Smokey Blue
+    - Conifer
+    - Pistachio
+    - Olive
+    - Pewter
+    - Vapour
+
+# -----------------------------------------------------------------------------
+# CAZOLETAS METOD (Check C-25)
+# Número de bisagras según altura de puerta (en mm)
+# -----------------------------------------------------------------------------
+cazoletas_metod:
+  - {alto_max: 800,  cazoletas: 2,    nota: "2 bisagras"}
+  - {alto_max: 899,  cazoletas: null, nota: "Zona límite — 2 o 3"}
+  - {alto_max: 1799, cazoletas: 3,    nota: "3 bisagras"}
+  - {alto_max: 2199, cazoletas: 4,    nota: "4 bisagras"}
+  - {alto_max: 99999, cazoletas: 5,   nota: "5 bisagras"}
+
+# Sufijo estándar del alto de puerta — alerta si no acaba en este valor (Check C-29)
+puerta_alto_sufijo_estandar: 98
+
+# -----------------------------------------------------------------------------
+# BALDAS (Check C-26)
+# Dimensiones estándar de balda con herrajes ocultos
+# -----------------------------------------------------------------------------
+baldas_dimensiones:
+  - {ancho: 600,  alto: 200, herrajes: 2}
+  - {ancho: 800,  alto: 200, herrajes: 2}
+  - {ancho: 1200, alto: 200, herrajes: 3}
+
+# -----------------------------------------------------------------------------
+# LAYERS DXF (Checks C-30 a C-43)
+# -----------------------------------------------------------------------------
+layers:
+  # C-30: estos layers NO deben aparecer en ningún DXF.
+  # CONTROL es un artefacto interno de Rhino que indica fallo en la exportación.
+  prohibidos_control:
+    - CONTROL
+
+  # C-31: este layer NO debe tener geometría operativa
+  sin_geometria_operativa:
+    - "0"
+
+  # C-32: layers internos de Rhino que NO deben aparecer en DXFs exportados
+  rhino_internos:
+    - HORNACINAS
+    - FAKTUM
+    - GODMORGON
+    - METOD
+    - PAX
+
+  # C-33: obligatorio en todos los DXFs
+  obligatorios:
+    - 0_ANOTACIONES
+
+  # C-34: obligatorio en tableros de gama LAM y LIN
+  obligatorios_lam_lin:
+    - 13-BISELAR-EM5-Z0_8
+
+  # C-43: layers en desuso — advertencia si aparecen
+  desuso:
+    - 7-POCKET-EM5-Z14_CANGREJO
+    - 8B_REBAJE_PARA_TIRADOR_Z2
+    - B_CABINEO1_D5_Z12
+    - B_CABINEO2_D15_Z11
+    - B_CORREDERA_D5_Z12
+    - B_COLGADOR_D8_Z15
+    - B_CAJON_D10_Z12
+
+  # C-35: layer de corte perimetral según gama y acabado
+  corte_perimetral:
+    estandar: "10_12-CUTEXT-EM5-Z18"
+    rodapie: "10_12-CORTAR_RODAPIE"
+    laca_no_estandar: "10_12-CONTORNO LACA"
+    # Acabados LAC que usan el layer estándar CUTEXT (no CONTORNO LACA)
+    lac_acabados_estandar:
+      - Roto
+      - Crema
+      - Blanco
+      - Seda
+
+  # C-37: recuento de tiradores HANDCUT
+  tirador_handcut: "9_11-HANDCUT-EM5-Z18"
+
+  # C-40: ventilación (rodapiés RV)
+  ventilacion: "8-REJILLA"
+
+  # C-41: colgador de hornacina
+  colgador_hornacina: "MECANISMO_HORNACINA_Z12"
+
+  # C-42: tensores
+  tensores:
+    - TIRANTE-POCKET-EM5-Z12
+    - TIRANTE-DES3_IN-EM5-Z9
+
+  # C-38: layers de taladros para cajones (torn.)
+  cajones_drill:
+    - 3-DRILL-EM5-Z12
+    - 3-DRILL-EM3-Z12
+    - 3-DRILL-EM5-Z2
+    - 3A-DRILL-EM3-Z3
+    - 3A-DRILL-EM5-Z12_4
+    - 3B-DRILL-EM5-Z14
+
+  # C-39: layers de cazoletas (bisagras METOD y PAX)
+  bisagras_metod:
+    - 6-POCKET-EM5-Z14
+    - 7-POCKET-EM5-Z14
+  bisagras_pax:
+    - 6A-POCKET-EM5-Z14_PAX
+    - 7-POCKET-EM5-Z14
+
+# -----------------------------------------------------------------------------
+# DESBASTE TIRADOR (Check C-36)
+# Mapping color tirador → layer DXF esperado
+# La clave _LIN aplica a cualquier pieza de gama LIN independientemente del color
+# La clave _DEFAULT aplica si no hay coincidencia específica
+# -----------------------------------------------------------------------------
+desbaste_tirador:
+  CEREZO:  "4-DES1_IN-EM5-Z3_7_CEREZO"
+  ROBLE:   "4-DES1_IN-EM5-Z3_7_ROBLE"
+  NOGAL:   "4-DES1_IN-EM5-Z3_7_NOGAL"
+  FRESNO:  "4-DES1_IN-EM5-Z3_7_FRESNO"
+  ABEDUL:  "4-DES1_IN-EM5-Z4_ABEDUL"
+  INOX:    "4-DES1_IN-EM5-Z1_3_METALIC"
+  METAL:   "4-DES1_IN-EM5-Z1_3_METALIC"
+  LATON:   "4-DES1_IN-EM5-Z1_8_LATON"
+  _LIN:    "4-DES1_IN-EM5-Z3_1_SOFT"
+  _DEFAULT: "4-DES1_IN-EM5-Z2_1_HPL_HPL"
+
+# Modelos de tirador que generan geometría en el DXF (los demás solo cuentan)
+tiradores_con_geometria_dxf:
+  - Round
+  - Square
+  - Pill
+
+# -----------------------------------------------------------------------------
+# TIPOLOGÍAS (Checks C-17, C-20–C-22, C-27, C-28)
+# -----------------------------------------------------------------------------
+tipologias:
+  # C-17: sufijo del ID de pieza → tipología esperada
+  sufijo_a_tipologia:
+    P: [P, X, L]   # M2-P1, M2-X1, M4-PL1
+    C: [C]          # M2-C1
+    T: [T, TBE]     # M1-T1, M1-TBE1
+
+  # C-20: tipologías que SIEMPRE deben tener apertura I/D
+  apertura_obligatoria:
+    - P
+
+  # C-21: tipologías que llevan apertura solo si tienen tirador
+  apertura_si_tirador:
+    - X
+
+  # C-22: tipologías que NUNCA deben tener apertura I/D
+  apertura_nunca:
+    - C
+
+  # C-28: tipologías que NO deben llevar tirador (alerta si lo tienen)
+  tipologias_sin_mecanizado:
+    - T
+    - TBE
+    - L
+    - B
+    - E
+    - R
+    - CT
+
+  # C-27: mecanizado esperado por tipología
+  # Si la tipología no aparece aquí, no se espera mecanizado
+  mecanizado_esperado:
+    P: "cazta."
+    X: "cazta."
+    C: "torn."
+    RV: "vent."
+    H: "hor."
+
+# -----------------------------------------------------------------------------
+# LOGÍSTICA (Checks C-54, C-55)
+# -----------------------------------------------------------------------------
+logistica:
+  # C-54: desviación máxima permitida entre suma EAN y peso OT/albarán
+  tolerancia_peso_porcentaje: 2.0
+
+  # C-55: umbral de dimensión máxima para envío en estructura (mm)
+  estructura_umbral_mm: 2480
+
+  # Longitud máxima para paquetería sin estructura (mm)
+  estructura_pequena_max_mm: 1200
+
+  # Peso máximo para paquetería estándar (kg)
+  paqueteria_peso_max_kg: 25
+
+# -----------------------------------------------------------------------------
+# NOMENCLATURA (Checks C-00, C-02)
+# Patrones glob para identificar tipo de archivo por nombre
+# prefijos_estado: valores usados al renombrar carpetas en Drive
+# -----------------------------------------------------------------------------
+nomenclatura:
+  patrones:
+    despiece:   "DESPIECE_*"
+    etiquetas:  "ETIQUETAS_*"
+    ean:        "EAN LOGISTIC_*"
+    ean_alt:    "EAN_LOGISTIC_*"
+    ot:         "OT_*"
+    dxf_tablero: "*_T[0-9]*.dxf"
+    dxf_todos:  "*TODOS LOS TABLEROS.dxf"
+    albaran:    "ALBARAN_*"
+    albaran_alt: "ALBARÁN_*"
+    nesting_pdf_ply: "*PLY*.pdf"
+    nesting_pdf_mdf: "*MDF*.pdf"
+    bultos:     "BULTOS_*"
+    destino_caja: "DESTINO CAJA_*"
+    dossier:    "CUBRO_Technical_Project_Dossier_*"
+    dossier_fr: "CUBRO_Dossier_technique_du_projet_*"
+    dossier_es: "CUBRO_Dossier_de_proyecto_*"
+    informe:    "informe_*"
+  prefijos_estado:
+    bloqueado:    "[BLOQUEADO] "
+    advertencias: "[ADVERTENCIAS] "
+    aprobado:     "[OK] "
