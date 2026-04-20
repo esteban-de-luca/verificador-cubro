@@ -502,11 +502,11 @@ def page_verificar() -> None:
     resp = st.session_state.responsable or "—"
 
     st.markdown(f"## {_ICONO[estado_actual]} {proyecto['nombre_limpio']}")
-    col_cap, col_btn = st.columns([3, 1])
-    col_cap.caption(
+    st.caption(
         f"Estado en Drive: **{estado_actual}** · {semana_name} · {resp} · "
         f"[Abrir en Drive]({_url_drive(proyecto['id'])})"
     )
+    col_btn, _ = st.columns([1, 3])
 
     st.markdown("---")
 
