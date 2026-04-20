@@ -206,8 +206,7 @@ def _modal_mover_carpintek(folder_id: str, nombre_limpio: str):
 
 def _sidebar() -> dict | None:
     """Dibuja la navegación. Devuelve el proyecto seleccionado o None."""
-    st.sidebar.title("🪚 Verificador")
-    st.sidebar.markdown("---")
+    config.render_sidebar_nav()
 
     responsable = st.sidebar.radio(
         "Responsable",
@@ -549,6 +548,7 @@ def main() -> None:
         layout="wide",
         initial_sidebar_state="expanded",
     )
+    config.apply_sidebar_width()
     page_verificar()
 
 

@@ -319,6 +319,8 @@ def main() -> None:
         page_icon="🪚",
         layout="wide",
     )
+    config.apply_sidebar_width()
+    config.render_sidebar_nav()
 
     _init_state()
 

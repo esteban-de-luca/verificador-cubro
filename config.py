@@ -16,6 +16,27 @@ import os
 from pathlib import Path
 from typing import Any
 
+import streamlit as st
+
+
+def apply_sidebar_width() -> None:
+    """Fija el ancho del sidebar (23.1rem) y oculta el nav automático de Streamlit."""
+    st.markdown(
+        """<style>
+        [data-testid='stSidebar'] { min-width: 23.1rem; max-width: 23.1rem; }
+        [data-testid='stSidebarNav'] { display: none; }
+        </style>""",
+        unsafe_allow_html=True,
+    )
+
+
+def render_sidebar_nav() -> None:
+    """Dibuja el encabezado del sidebar con título arriba y links de navegación debajo."""
+    st.sidebar.title("🪚 Verificador")
+    st.sidebar.page_link("app.py", label="🔍 Verificador de Fichero")
+    st.sidebar.page_link("pages/2_Cola_Global.py", label="📋 Ficheros pendientes")
+    st.sidebar.markdown("---")
+
 
 # ---------------------------------------------------------------------------
 # Constantes NO sensibles (pueden vivir en el repo)
