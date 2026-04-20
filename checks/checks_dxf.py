@@ -141,10 +141,14 @@ def check_layer_biselar_lam_lin(dxfs: list[DXFDoc], reglas: dict) -> CheckResult
 
 def check_corte_perimetral(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     """
-    C-35: Cada DXF tiene el layer de corte perimetral correcto:
-    - LAC estándar (Roto/Crema/Blanco/Seda) → 10_12-CUTEXT-EM5-Z18
-    - LAC otros acabados → 10_12-CONTORNO LACA
-    - LAM/LIN/WOO → 10_12-CUTEXT-EM5-Z18
+    C-35: Cada DXF tiene el layer de corte perimetral correcto.
+
+    Regla a nivel de proyecto:
+    - Si TODOS los acabados LAC del proyecto son estándar (Roto/Crema/Blanco/Seda)
+      → cada LAC usa 10_12-CUTEXT-EM5-Z18
+    - Si CUALQUIER acabado LAC del proyecto es no estándar (Agave, Marga, Noche…)
+      → TODOS los LAC del proyecto usan 10_12-CONTORNO LACA (incluso Roto/Seda)
+    - LAM/LIN/WOO → siempre 10_12-CUTEXT-EM5-Z18
     Bloquea: Sí.
     """
     s = _si_no_dxfs("C-35", "Layer corte perimetral correcto por gama/acabado", dxfs)
@@ -153,12 +157,17 @@ def check_corte_perimetral(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     cp = reglas["layers"]["corte_perimetral"]
     layer_estandar = cp["estandar"]
     layer_laca_no_std = cp["laca_no_estandar"]
-    lac_std = [a.lower() for a in cp.get("lac_acabados_estandar", [])]
+    lac_std = {a.lower() for a in cp.get("lac_acabados_estandar", [])}
+
+    proyecto_tiene_lac_no_std = any(
+        dxf.gama == "LAC" and dxf.acabado.lower() not in lac_std
+        for dxf in dxfs
+    )
 
     errores = []
     for dxf in dxfs:
-        if dxf.gama == "LAC" and dxf.acabado.lower() not in lac_std:
-            layer_esperado = layer_laca_no_std
+        if dxf.gama == "LAC":
+            layer_esperado = layer_laca_no_std if proyecto_tiene_lac_no_std else layer_estandar
         else:
             layer_esperado = layer_estandar
 
@@ -189,12 +198,17 @@ def check_layer_desbaste_tirador(
     desbaste: dict[str, str] = reglas["desbaste_tirador"]
     todas = _todas_layers(dxfs)
     layer_default = desbaste.get("_DEFAULT", "")
+    modelos_con_geometria = {
+        m.upper() for m in reglas.get("tiradores_con_geometria_dxf", [])
+    }
 
     errores = []
     colores_vistos: set[str] = set()
     for p in piezas:
         if not p.tiene_tirador or not p.color_tirador:
             continue
+        if p.tirador.upper() not in modelos_con_geometria:
+            continue  # modelo sin geometría en nesting → no deja layer
         color = p.color_tirador.upper()
         if color in colores_vistos:
             continue

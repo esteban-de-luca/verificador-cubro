@@ -237,6 +237,33 @@ class TestC35:
         r = check_corte_perimetral([], reglas)
         assert r.resultado == "SKIP"
 
+    def test_pass_lac_estandar_roto_con_no_estandar_en_proyecto(self, reglas):
+        # Proyecto con Agave (no estándar) + Roto: ambos deben usar CONTORNO LACA
+        dxfs = [
+            _dxf(gama="LAC", acabado="Agave", layers={"10_12-CONTORNO LACA"}),
+            _dxf(gama="LAC", acabado="Roto",  layers={"10_12-CONTORNO LACA"}),
+        ]
+        r = check_corte_perimetral(dxfs, reglas)
+        assert r.resultado == "PASS"
+
+    def test_fail_lac_estandar_roto_usa_cutext_cuando_hay_no_estandar(self, reglas):
+        # Roto usa CUTEXT pero el proyecto tiene Agave (no estándar) → FAIL
+        dxfs = [
+            _dxf(gama="LAC", acabado="Agave", layers={"10_12-CONTORNO LACA"}),
+            _dxf(gama="LAC", acabado="Roto",  layers={"10_12-CUTEXT-EM5-Z18"}),
+        ]
+        r = check_corte_perimetral(dxfs, reglas)
+        assert r.resultado == "FAIL"
+
+    def test_pass_mix_lac_solo_estandares(self, reglas):
+        # Roto + Seda, ambos estándar → CUTEXT para los dos
+        dxfs = [
+            _dxf(gama="LAC", acabado="Roto", layers={"10_12-CUTEXT-EM5-Z18"}),
+            _dxf(gama="LAC", acabado="Seda", layers={"10_12-CUTEXT-EM5-Z18"}),
+        ]
+        r = check_corte_perimetral(dxfs, reglas)
+        assert r.resultado == "PASS"
+
 
 # ---------------------------------------------------------------------------
 # C-36
@@ -266,6 +293,34 @@ class TestC36:
     def test_skip_sin_dxfs(self, reglas):
         r = check_layer_desbaste_tirador([], [], reglas)
         assert r.resultado == "SKIP"
+
+    def test_pass_tirador_sin_geometria_ignorado(self, reglas):
+        # Superline no genera geometría → no se verifica su color
+        dxfs = [_dxf(layers={"CONTROL"})]
+        piezas = [_pieza(tirador="Superline", color_tirador="Brass")]
+        r = check_layer_desbaste_tirador(dxfs, piezas, reglas)
+        assert r.resultado == "PASS"
+
+    def test_pass_mismo_color_geometria_y_no_geometria(self, reglas):
+        # Superline+Roble no envenena colores_vistos; Round+Roble sí se verifica
+        layer_roble = "4-DES1_IN-EM5-Z3_7_ROBLE"
+        dxfs = [_dxf(layers={"CONTROL", layer_roble})]
+        piezas = [
+            _pieza(tirador="Superline", color_tirador="Roble"),
+            _pieza(tirador="Round",     color_tirador="Roble"),
+        ]
+        r = check_layer_desbaste_tirador(dxfs, piezas, reglas)
+        assert r.resultado == "PASS"
+
+    def test_fail_geometria_y_no_geometria_layer_ausente(self, reglas):
+        # Round+Roble debe verificarse aunque Superline+Roble venga antes
+        dxfs = [_dxf(layers={"CONTROL"})]
+        piezas = [
+            _pieza(tirador="Superline", color_tirador="Roble"),
+            _pieza(tirador="Round",     color_tirador="Roble"),
+        ]
+        r = check_layer_desbaste_tirador(dxfs, piezas, reglas)
+        assert r.resultado == "FAIL"
 
 
 # ---------------------------------------------------------------------------
