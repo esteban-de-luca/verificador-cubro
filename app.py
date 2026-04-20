@@ -507,6 +507,7 @@ def page_verificar() -> None:
         f"Estado en Drive: **{estado_actual}** · {semana_name} · {resp} · "
         f"[Abrir en Drive]({_url_drive(proyecto['id'])})"
     )
+    col_btn.markdown("<div style='margin-top:1.6rem;'></div>", unsafe_allow_html=True)
 
     st.markdown("---")
 
