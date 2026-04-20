@@ -35,7 +35,8 @@ def render_sidebar_nav() -> None:
     from pathlib import Path
     logo = Path(__file__).parent / "logo_cubro.png"
     st.sidebar.image(str(logo))
-    st.sidebar.page_link("app.py", label="🔍 Verificador de Fichero")
+    st.sidebar.markdown("<div style='margin-top:0.75rem;'></div>", unsafe_allow_html=True)
+    st.sidebar.page_link("app.py", label="🔍 Verificador de Ficheros")
     st.sidebar.page_link("pages/2_Cola_Global.py", label="📋 Ficheros pendientes")
     st.sidebar.markdown("---")
 
