@@ -501,16 +501,15 @@ def page_verificar() -> None:
     semana_name = st.session_state.semana["name"] if st.session_state.semana else "—"
     resp = st.session_state.responsable or "—"
 
-    col_titulo, col_btn = st.columns([3, 1])
-    col_titulo.markdown(f"## {_ICONO[estado_actual]} {proyecto['nombre_limpio']}")
-    col_titulo.caption(
+    st.markdown(f"## {_ICONO[estado_actual]} {proyecto['nombre_limpio']}")
+    st.caption(
         f"Estado en Drive: **{estado_actual}** · {semana_name} · {resp} · "
         f"[Abrir en Drive]({_url_drive(proyecto['id'])})"
     )
-    col_btn.markdown("<div style='margin-top:1.6rem;'></div>", unsafe_allow_html=True)
 
     st.markdown("---")
 
+    _, col_btn = st.columns([3, 1])
     if col_btn.button("🔍 Verificar proyecto", type="primary", use_container_width=True):
         st.session_state.informe = None
         with st.spinner(f"Descargando y verificando {proyecto['nombre_limpio']}…"):
