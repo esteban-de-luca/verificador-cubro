@@ -74,10 +74,10 @@ _RE_CORTE_TABLA = re.compile(
 _RE_TABLEROS_TOTAL = re.compile(
     r"cantidad\s+de\s+tableros[:\s]+(\d+)", re.IGNORECASE
 )
-# Filas del Packing List: "EU-21247 M5-T2 120 800 ..."  o  "EU-21247 R2 75 2400 ..."
+# Filas del Packing List: "EU-21247 M5-T2 120 800 ..."  o  "EU-21247 P1-P1 ..."  o  "EU-21247 R2 ..."
 _RE_PL_FILA = re.compile(
-    r"(?:EU|SP)-\d{5}(?:-INC)?\s+"               # ID proyecto al inicio de fila
-    r"((?:M\d+-[A-Za-z]+\d+)|(?:[A-Za-z]+\d+))",  # ID pieza: M9-PL1, R2, E1, PL1, CT2…
+    r"(?:EU|SP)-\d{5}(?:-INC)?\s+"                        # ID proyecto al inicio de fila
+    r"([A-Za-z]+\d+-[A-Za-z]+\d+|[A-Za-z]+\d+)",          # ID pieza: M9-PL1, P1-P1, R2, E1…
     re.IGNORECASE
 )
 # "Rejillas de ventilación: 2 uds."

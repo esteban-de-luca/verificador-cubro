@@ -69,7 +69,7 @@ def check_ids_despiece_en_ot(piezas: list[Pieza], ot: OTData) -> CheckResult:
             "OT sin IDs individuales (requiere extractor avanzado de OT)", _GRUPO_PIEZAS,
         )
     ids_ot = set(ot.ids_piezas)
-    faltantes = [p.id for p in piezas if p.id not in ids_ot]
+    faltantes = [p.id for p in piezas if p.id.upper() not in ids_ot]
     return _resultado("C-12", "IDs DESPIECE presentes en Packing List OT",
                       faltantes, True, _GRUPO_PIEZAS)
 
