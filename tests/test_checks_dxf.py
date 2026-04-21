@@ -77,12 +77,13 @@ def _ot(num_tiradores=0, num_ventilacion=0, colgadores_hornacina=None, tiene_ten
 
 class TestC30:
 
-    def test_pass_control_con_geometria(self, reglas):
-        dxfs = [_dxf(layers_geo={"CONTROL"})]
+    def test_pass_sin_layer_control(self, reglas):
+        dxfs = [_dxf(layers={"0_ANOTACIONES", "13-BISELAR-EM5-Z0_8",
+                              "10_12-CUTEXT-EM5-Z18"}, layers_geo=set())]
         r = check_layer_control(dxfs, reglas)
         assert r.resultado == "PASS"
 
-    def test_fail_control_sin_geometria(self, reglas):
+    def test_fail_layer_control_presente(self, reglas):
         dxfs = [_dxf(layers={"CONTROL", "0_ANOTACIONES"}, layers_geo=set())]
         r = check_layer_control(dxfs, reglas)
         assert r.resultado == "FAIL"
@@ -484,14 +485,14 @@ class TestC39:
 
 class TestC40:
 
-    def test_pass_rejilla_coincide(self, reglas):
-        dxfs = [_dxf(conteos={"8-REJILLA": 2})]
+    def test_pass_rejilla_presente(self, reglas):
+        dxfs = [_dxf(layers={"CONTROL", "0_ANOTACIONES", "8-REJILLA"})]
         ot = _ot(num_ventilacion=2)
         r = check_ventilacion_rejilla(dxfs, ot, reglas)
         assert r.resultado == "PASS"
 
-    def test_fail_rejilla_no_coincide(self, reglas):
-        dxfs = [_dxf(conteos={"8-REJILLA": 1})]
+    def test_fail_rejilla_ausente(self, reglas):
+        dxfs = [_dxf(layers={"CONTROL", "0_ANOTACIONES"})]
         ot = _ot(num_ventilacion=3)
         r = check_ventilacion_rejilla(dxfs, ot, reglas)
         assert r.resultado == "FAIL"
