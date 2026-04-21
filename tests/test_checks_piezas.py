@@ -416,20 +416,31 @@ class TestC28:
 # C-29
 # ===========================================================================
 class TestC29:
-    def test_pass_alto_acaba_en_98(self, r):
+    def test_pass_alto_798_estandar(self, r):
         piezas = [Pieza("M1-P1", 400, 798, "PLY", "LAM", "Pale", "P",
                         mecanizado="cazta.", apertura="D")]
         assert check_alto_puerta_sufijo(piezas, r).resultado == "PASS"
 
-    def test_warn_alto_no_acaba_en_98(self, r):
-        piezas = [Pieza("M1-P1", 400, 800, "PLY", "LAM", "Pale", "P",
+    def test_skip_alto_no_estandar(self, r):
+        piezas = [Pieza("M1-P1", 400, 518, "PLY", "LAM", "Pale", "P",
                         mecanizado="cazta.", apertura="D")]
         res = check_alto_puerta_sufijo(piezas, r)
-        assert res.resultado == "WARN" and not res.bloquea
+        assert res.resultado == "SKIP" and not res.bloquea
+        assert "518" in res.detalle
 
-    def test_pass_598_acaba_en_98(self, r):
+    def test_pass_598_estandar(self, r):
         piezas = [Pieza("M1-P1", 400, 598, "PLY", "LAM", "Pale", "P",
                         mecanizado="cazta.", apertura="D")]
+        assert check_alto_puerta_sufijo(piezas, r).resultado == "PASS"
+
+    def test_pass_alturas_ampliadas(self, r):
+        # alturas añadidas: 471, 606, 671, 806, 871, 1471, 2071, 2271, 2471
+        piezas = [
+            Pieza("M1-P1", 400, 471, "PLY", "LAM", "Pale", "P"),
+            Pieza("M1-P2", 400, 606, "PLY", "LAM", "Pale", "P"),
+            Pieza("M1-P3", 400, 806, "PLY", "LAM", "Pale", "P"),
+            Pieza("M1-P4", 400, 2471, "PLY", "LAM", "Pale", "P"),
+        ]
         assert check_alto_puerta_sufijo(piezas, r).resultado == "PASS"
 
     def test_no_aplica_cajon(self, r):

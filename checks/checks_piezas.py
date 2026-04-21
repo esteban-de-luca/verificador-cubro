@@ -413,12 +413,24 @@ def check_tirador_en_sin_mecanizado(piezas: list[Pieza], reglas: dict) -> CheckR
 # ---------------------------------------------------------------------------
 
 def check_alto_puerta_sufijo(piezas: list[Pieza], reglas: dict) -> CheckResult:
-    """C-29: Alto de puerta P debería acabar en 98 (posible recrecida si no). Bloquea: No."""
-    sufijo_std: int = reglas["puerta_alto_sufijo_estandar"]
-    errores = [
-        f"{p.id}: alto={p.alto} (no acaba en {sufijo_std})"
+    """C-29: Alto de puerta P es uno de los valores estándar. Bloquea: No.
+
+    Si alguna puerta P tiene un alto fuera de la lista de alturas estándar
+    (recrecida, recortada o diseño especial), el check devuelve SKIP con el
+    listado de piezas afectadas para que tengan visibilidad en el informe.
+    """
+    alturas_std: list[int] = reglas["puerta_alturas_estandar"]
+    std_set = set(alturas_std)
+    no_estandar = [
+        f"{p.id}: alto={p.alto}"
         for p in piezas
-        if p.tipologia == "P" and p.alto % 100 != sufijo_std
+        if p.tipologia == "P" and p.alto not in std_set
     ]
-    return _resultado("C-29", f"Alto puerta P acaba en {sufijo_std}",
-                      errores, False, _GRUPO_MEC, tipo_fail="WARN")
+    if no_estandar:
+        return _skip(
+            "C-29", "Alto puerta P es valor estándar",
+            "Alturas fuera del estándar (posible recrecida/recortada): "
+            + "; ".join(no_estandar),
+            _GRUPO_MEC,
+        )
+    return _pass("C-29", "Alto puerta P es valor estándar", False, _GRUPO_MEC)

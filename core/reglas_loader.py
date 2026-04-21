@@ -23,7 +23,7 @@ _SECCIONES_OBLIGATORIAS_REGLAS = [
     "materiales",
     "acabados",
     "cazoletas_metod",
-    "puerta_alto_sufijo_estandar",
+    "puerta_alturas_estandar",
     "baldas_dimensiones",
     "layers",
     "desbaste_tirador",

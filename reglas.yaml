@@ -88,8 +88,43 @@ cazoletas_metod:
   - {alto_max: 2199, cazoletas: 4,    nota: "4 bisagras"}
   - {alto_max: 99999, cazoletas: 5,   nota: "5 bisagras"}
 
-# Sufijo estándar del alto de puerta — alerta si no acaba en este valor (Check C-29)
-puerta_alto_sufijo_estandar: 98
+# Alturas estándar de puertas (tipología P) — Check C-29.
+# Si una puerta P tiene un alto fuera de esta lista, el check devuelve SKIP
+# (caso especial: recrecida, recortada, diseño no estándar).
+puerta_alturas_estandar:
+  - 198
+  - 398
+  - 448
+  - 449
+  - 471
+  - 598
+  - 606
+  - 619
+  - 629
+  - 648
+  - 649
+  - 671
+  - 798
+  - 806
+  - 819
+  - 829
+  - 848
+  - 849
+  - 871
+  - 998
+  - 1019
+  - 1029
+  - 1049
+  - 1198
+  - 1398
+  - 1471
+  - 1598
+  - 1798
+  - 1998
+  - 2071
+  - 2198
+  - 2271
+  - 2471
 
 # -----------------------------------------------------------------------------
 # BALDAS (Check C-26)

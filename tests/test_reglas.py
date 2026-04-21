@@ -78,7 +78,7 @@ class TestSeccionesObligatorias:
 
     _SECCIONES = [
         "materiales", "acabados", "cazoletas_metod",
-        "puerta_alto_sufijo_estandar", "baldas_dimensiones",
+        "puerta_alturas_estandar", "baldas_dimensiones",
         "layers", "desbaste_tirador", "tiradores_con_geometria_dxf",
         "tipologias", "logistica", "nomenclatura",
     ]
@@ -218,9 +218,13 @@ class TestCazoletas:
         with pytest.raises(ValueError, match="alto_max"):
             cargar_reglas(yaml_roto)
 
-    def test_sufijo_estandar_puerta_es_98(self, reglas):
-        """PASS: el sufijo estándar de alto de puerta es 98 (ej. 598, 798)."""
-        assert reglas["puerta_alto_sufijo_estandar"] == 98
+    def test_alturas_estandar_puerta_contienen_798(self, reglas):
+        """PASS: la lista de alturas estándar de puerta incluye los valores clave (798, 598, 998)."""
+        alturas = reglas["puerta_alturas_estandar"]
+        assert isinstance(alturas, list)
+        assert 798 in alturas
+        assert 598 in alturas
+        assert 998 in alturas
 
 
 # ===========================================================================
