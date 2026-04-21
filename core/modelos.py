@@ -122,7 +122,9 @@ class OTData:
     num_piezas: int                             # Total piezas en Packing List OT
     peso_total_kg: float                        # Peso bruto total
     num_tiradores: int                          # Total tiradores declarados
-    tableros: dict[str, int] = field(default_factory=dict)      # {clave_material: n_tableros}
+    tableros: dict[str, int] = field(default_factory=dict)      # {clave_material: n_tableros} — solo columnas con cantidad declarada
+    materiales_sin_cantidad: list[str] = field(default_factory=list)  # claves de materiales en INFORMACION DE CORTE sin '# Tableros' (C-03)
+    num_tableros_total: int | None = None                        # "Cantidad de tableros: N" en cabecera — None si falta (C-03)
     observaciones_cnc: list[str] = field(default_factory=list)  # Observaciones CNC
     observaciones_produccion: list[str] = field(default_factory=list)  # Obs. producción
     # Campos opcionales — se rellenan si el extractor los detecta

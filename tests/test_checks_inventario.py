@@ -32,11 +32,17 @@ def _dxf(nombre="EU21822_X_PLY_LAMINADO_PALE_T1.dxf", material="PLY", gama="LAM"
     return DXFDoc(nombre, num, material, gama, acabado, layers={"CONTROL", "0_ANOTACIONES"})
 
 
-def _ot(tableros=None, n_piezas=1):
+_UNSET = object()
+
+def _ot(tableros=None, n_piezas=1, num_tableros_total=_UNSET, materiales_sin_cantidad=None):
     if tableros is None:
         tableros = {"PLY_LAM_Pale": 2}
+    if num_tableros_total is _UNSET:
+        num_tableros_total = sum(tableros.values()) if tableros else None
     return OTData("EU-21822", "Test", "Semana 18", n_piezas, 50.0, 0,
-                  tableros=tableros)
+                  tableros=tableros,
+                  materiales_sin_cantidad=materiales_sin_cantidad or [],
+                  num_tableros_total=num_tableros_total)
 
 
 # ---------------------------------------------------------------------------
@@ -152,9 +158,24 @@ class TestC03:
         r = check_num_dxf_vs_ot(dxfs, ot)
         assert r.resultado == "FAIL"
 
-    def test_skip_ot_sin_tableros(self):
+    def test_fail_ot_sin_tableros(self):
+        # OT vacía (sin cabecera ni tabla) → FAIL por dato obligatorio faltante
         r = check_num_dxf_vs_ot([_dxf()], _ot(tableros={}))
-        assert r.resultado == "SKIP"
+        assert r.resultado == "FAIL"
+        assert "Cantidad de tableros" in r.detalle
+
+    def test_fail_material_sin_cantidad(self):
+        ot = _ot(tableros={}, num_tableros_total=3,
+                 materiales_sin_cantidad=["MDF_WOO_Roble"])
+        r = check_num_dxf_vs_ot([_dxf()], ot)
+        assert r.resultado == "FAIL"
+        assert "MDF_WOO_Roble" in r.detalle
+
+    def test_fail_falta_total_cabecera(self):
+        ot = _ot(tableros={"PLY_LAM_Pale": 2}, num_tableros_total=None)
+        r = check_num_dxf_vs_ot([_dxf(num=1), _dxf(num=2)], ot)
+        assert r.resultado == "FAIL"
+        assert "cabecera" in r.detalle.lower()
 
     def test_pass_varios_materiales(self):
         dxfs = [_dxf(num=i) for i in range(1, 6)]

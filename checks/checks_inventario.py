@@ -111,14 +111,36 @@ def check_nomenclatura(nombres_archivos: list[str], reglas: dict) -> CheckResult
 
 def check_num_dxf_vs_ot(dxfs: list[DXFDoc], ot: OTData) -> CheckResult:
     """
-    C-03: Número de DXFs tableros (_T[N].dxf) == suma de tableros en OT.
-    SKIP si OT.tableros está vacío (OT no parseada).
+    C-03: Número de DXFs tableros (_T[N].dxf) == nº tableros declarados en OT.
+
+    FAIL si:
+      - falta '# Tableros' de algún material en INFORMACION DE CORTE
+      - falta 'Cantidad de tableros' en la cabecera INFORMACION DE ENVIO
+      - el nº de DXFs no coincide con los tableros declarados
     Bloquea: Sí.
     """
-    total_ot = sum(ot.tableros.values())
-    if total_ot == 0:
-        return _skip("C-03", "Nº DXFs == nº tableros OT", "OT sin datos de tableros", _GRUPO)
+    errores: list[str] = []
 
+    if ot.materiales_sin_cantidad:
+        errores.append(
+            "Falta '# Tableros' en INFORMACION DE CORTE para: "
+            + ", ".join(ot.materiales_sin_cantidad)
+        )
+
+    if ot.num_tableros_total is None and not ot.tableros:
+        errores.append(
+            "Falta 'Cantidad de tableros' en cabecera INFORMACION DE ENVIO "
+            "y '# Tableros' en INFORMACION DE CORTE"
+        )
+    elif ot.num_tableros_total is None:
+        errores.append("Falta 'Cantidad de tableros' en cabecera INFORMACION DE ENVIO")
+
+    if errores:
+        return _fail("C-03", "Nº DXFs == nº tableros OT",
+                     " | ".join(errores), True, _GRUPO)
+
+    # Referencia para comparar con DXFs: total de cabecera si existe, si no suma por material.
+    total_ot = ot.num_tableros_total if ot.num_tableros_total is not None else sum(ot.tableros.values())
     n_dxf = len(dxfs)
     if n_dxf == total_ot:
         return _pass("C-03", "Nº DXFs == nº tableros OT", True, _GRUPO)

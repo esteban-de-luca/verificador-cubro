@@ -72,12 +72,12 @@ _RE_CORTE_TABLA = re.compile(
     r"Tablero\s+base\s+(.*?)\n"
     r"Gama\s+(.*?)\n"
     r"Acabado\s+(.*?)\n"
-    r"#\s*Tableros\s+([\d\s]+)",
+    r"#\s*Tableros\s*([^\n]*)",
     re.IGNORECASE,
 )
-# Fallback: "Cantidad de tableros: 3"
+# "Cantidad de tableros: 3" (cabecera INFORMACION DE ENVIO). Acepta vacío.
 _RE_TABLEROS_TOTAL = re.compile(
-    r"cantidad\s+de\s+tableros[:\s]+(\d+)", re.IGNORECASE
+    r"cantidad\s+de\s+tableros[:\s]*([^\n]*)", re.IGNORECASE
 )
 # Filas del Packing List: "EU-21247 M5-T2 120 800 ..."  o  "EU-21247 P1-P1 ..."  o  "EU-21247 R2 ..."  o  "EU-21742 H1-TAP ..."
 _RE_PL_FILA = re.compile(
@@ -159,36 +159,43 @@ def _limpiar_observaciones(bloque: str) -> list[str]:
     ]
 
 
-def _parsear_tabla_corte(texto: str) -> dict[str, int]:
+def _parsear_tabla_corte(texto: str) -> tuple[dict[str, int], list[str]]:
     """
-    Parsea la tabla INFORMACION DE CORTE y devuelve {MAT_GAM_Acabado: n_tableros}.
-    Si la tabla no coincide, devuelve {} para que el fallback tome el relevo.
+    Parsea la tabla INFORMACION DE CORTE.
+
+    Returns:
+        (tableros, materiales_sin_cantidad) donde:
+        - tableros: {MAT_GAM_Acabado: n_tableros} — solo columnas con cantidad declarada
+        - materiales_sin_cantidad: claves de columnas cuyo '# Tableros' está vacío
+          o no es un número (se detectan pero no se cuentan).
+        Si la tabla no coincide, devuelve ({}, []).
     """
     m = _RE_CORTE_TABLA.search(texto)
     if not m:
-        return {}
+        return {}, []
 
     materiales = m.group(1).upper().split()
     gamas_raw = m.group(2).lower().split()
     acabados_tokens = m.group(3).split()
-    nums_str = m.group(4).split()
+    nums_raw = m.group(4).split()
 
     gamas = [_GAMA_NOMBRE_A_CODIGO.get(g, g.upper()) for g in gamas_raw]
 
-    try:
-        nums = [int(n) for n in nums_str]
-    except ValueError:
-        return {}
+    n_cols = min(len(materiales), len(gamas), len(acabados_tokens))
+    if n_cols == 0:
+        return {}, []
 
-    n = min(len(materiales), len(gamas), len(acabados_tokens), len(nums))
-    if n == 0:
-        return {}
-
-    result: dict[str, int] = {}
-    for i in range(n):
+    tableros: dict[str, int] = {}
+    sin_cantidad: list[str] = []
+    for i in range(n_cols):
         clave = f"{materiales[i]}_{gamas[i]}_{acabados_tokens[i].title()}"
-        result[clave] = result.get(clave, 0) + nums[i]
-    return result
+        num_tok = nums_raw[i] if i < len(nums_raw) else ""
+        if num_tok.isdigit():
+            tableros[clave] = tableros.get(clave, 0) + int(num_tok)
+        else:
+            if clave not in sin_cantidad:
+                sin_cantidad.append(clave)
+    return tableros, sin_cantidad
 
 
 # ---------------------------------------------------------------------------
@@ -242,12 +249,17 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
     num_tiradores = int(m_tir.group(1)) if m_tir else 0
 
     # Tableros por material (tabla INFORMACION DE CORTE)
-    tableros = _parsear_tabla_corte(texto)
-    if not tableros:
-        # Fallback: "Cantidad de tableros: 3"
-        m_tot = _RE_TABLEROS_TOTAL.search(texto)
-        if m_tot:
-            tableros = {"total": int(m_tot.group(1))}
+    tableros, materiales_sin_cantidad = _parsear_tabla_corte(texto)
+
+    # Cantidad total de tableros en cabecera "INFORMACION DE ENVIO"
+    m_tot = _RE_TABLEROS_TOTAL.search(texto)
+    if m_tot:
+        tok_tot = m_tot.group(1).strip().split()
+        num_tableros_total: int | None = (
+            int(tok_tot[0]) if tok_tot and tok_tot[0].isdigit() else None
+        )
+    else:
+        num_tableros_total = None
 
     # Ventilación — "Rejillas de ventilación: 2 uds."
     m_vent = _RE_VENTILACION.search(texto)
@@ -292,6 +304,8 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
         peso_total_kg=peso_total,
         num_tiradores=num_tiradores,
         tableros=tableros,
+        materiales_sin_cantidad=materiales_sin_cantidad,
+        num_tableros_total=num_tableros_total,
         num_ventilacion=num_ventilacion,
         colgadores_hornacina=colgadores_hornacina,
         tiene_tensores=tiene_tensores,
