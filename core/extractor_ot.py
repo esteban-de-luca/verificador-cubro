@@ -60,8 +60,7 @@ _RE_TIRADORES = re.compile(
 )
 # Fila "Tiradores  Superline" (sin #) — captura modelo/s del tirador
 _RE_MODELO_TIRADOR = re.compile(
-    r"^Tiradoress+([A-Za-z][^
-]*)$",
+    r"^Tiradores\s+([A-Za-z][^\n]*)$",
     re.IGNORECASE | re.MULTILINE,
 )
 # Tabla INFORMACION DE CORTE — formato multi-columna:
