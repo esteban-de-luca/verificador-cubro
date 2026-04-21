@@ -235,13 +235,27 @@ def check_layer_desbaste_tirador(
 def check_handcut_vs_tiradores(
     dxfs: list[DXFDoc], ot: OTData, reglas: dict
 ) -> CheckResult:
-    """C-37: Suma entidades HANDCUT en DXFs == OT.num_tiradores. Bloquea: Sí."""
+    """C-37: Si hay tiradores que generan geometría (Round/Square/Pill), el layer
+    HANDCUT debe estar presente en los DXFs. Tiradores sin geometría (Superline,
+    Bar, Knob…) no generan HANDCUT → SKIP. Bloquea: Sí."""
     s = _si_no_dxfs("C-37", "Recuento HANDCUT == tiradores OT", dxfs)
     if s:
         return s
     if ot.num_tiradores == 0:
         return _skip("C-37", "Recuento HANDCUT == tiradores OT",
                      "OT sin tiradores declarados", _GRUPO)
+
+    modelos_con_handcut: set[str] = {
+        m for m in ot.modelos_tiradores
+        if m.title() in reglas.get("tiradores_con_geometria_dxf", [])
+    }
+
+    if not modelos_con_handcut:
+        modelos_str = ", ".join(ot.modelos_tiradores) if ot.modelos_tiradores else "desconocido"
+        return _skip(
+            "C-37", "Recuento HANDCUT == tiradores OT",
+            f"Tirador '{modelos_str}' no genera HANDCUT en DXF", _GRUPO,
+        )
 
     layer_handcut: str = reglas["layers"]["tirador_handcut"]
     n_handcut = _sum_conteo(dxfs, layer_handcut)

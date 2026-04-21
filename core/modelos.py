@@ -130,6 +130,7 @@ class OTData:
     num_ventilacion: int = 0          # Nº rejillas ventilación declaradas (C-40)
     tiene_hornacina: bool | None = None   # OT declara colgador de hornacina (C-41)
     tiene_tensores: bool | None = None    # OT declara tensores (C-42)
+    modelos_tiradores: list[str] = field(default_factory=list)  # Modelos de tirador: ["Round"], ["Superline", "Pill"]…
 
 
 # ---------------------------------------------------------------------------
