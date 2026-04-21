@@ -58,6 +58,12 @@ _RE_PESO = re.compile(
 _RE_TIRADORES = re.compile(
     r"(?:#\s*tiradores?|tiradores?)[:\s]+(\d+)", re.IGNORECASE
 )
+# Fila "Tiradores  Superline" (sin #) — captura modelo/s del tirador
+_RE_MODELO_TIRADOR = re.compile(
+    r"^Tiradoress+([A-Za-z][^
+]*)$",
+    re.IGNORECASE | re.MULTILINE,
+)
 # Tabla INFORMACION DE CORTE — formato multi-columna:
 #   Tablero base  MDF  PLY
 #   Gama          Laca Laminado
@@ -226,6 +232,14 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
 
     # Tiradores — "# Tiradores 13"
     m_tir = _RE_TIRADORES.search(texto)
+
+    # Modelos de tirador — fila "Tiradores  Superline" (sin #)
+    modelos_tiradores: list[str] = list(dict.fromkeys(
+        tok.strip().title()
+        for m in _RE_MODELO_TIRADOR.finditer(texto)
+        for tok in m.group(1).split()
+        if tok.strip() and tok.strip() != "-"
+    ))
     num_tiradores = int(m_tir.group(1)) if m_tir else 0
 
     # Tableros por material (tabla INFORMACION DE CORTE)
@@ -279,4 +293,5 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
         observaciones_cnc=obs_cnc,
         observaciones_produccion=obs_prod,
         ids_piezas=ids_piezas,
+        modelos_tiradores=modelos_tiradores,
     )

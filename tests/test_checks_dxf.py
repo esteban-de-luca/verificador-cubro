@@ -61,11 +61,13 @@ def _pieza(id="M1-P1", material="PLY", gama="LAM", acabado="Pale",
     return p
 
 
-def _ot(num_tiradores=0, num_ventilacion=0, tiene_hornacina=None, tiene_tensores=None):
+def _ot(num_tiradores=0, num_ventilacion=0, tiene_hornacina=None, tiene_tensores=None,
+        modelos_tiradores=None):
     ot = OTData("EU-21822", "Test", "Semana 18", 10, 50.0, num_tiradores)
     ot.num_ventilacion = num_ventilacion
     ot.tiene_hornacina = tiene_hornacina
     ot.tiene_tensores = tiene_tensores
+    ot.modelos_tiradores = modelos_tiradores or []
     return ot
 
 
@@ -329,29 +331,92 @@ class TestC36:
 
 class TestC37:
 
-    def test_pass_handcut_coincide(self, reglas):
+    # --- Tiradores CON geometría (Round / Square / Pill) ---
+
+    def test_pass_round_handcut_coincide(self, reglas):
+        """Round → requiere HANDCUT; cuenta coincide → PASS."""
         layer = "9_11-HANDCUT-EM5-Z18"
         dxfs = [_dxf(conteos={layer: 5})]
-        ot = _ot(num_tiradores=5)
+        ot = _ot(num_tiradores=5, modelos_tiradores=["Round"])
         r = check_handcut_vs_tiradores(dxfs, ot, reglas)
         assert r.resultado == "PASS"
 
-    def test_fail_handcut_no_coincide(self, reglas):
+    def test_fail_round_handcut_no_coincide(self, reglas):
+        """Round → requiere HANDCUT; cuenta no coincide → FAIL."""
         layer = "9_11-HANDCUT-EM5-Z18"
         dxfs = [_dxf(conteos={layer: 3})]
-        ot = _ot(num_tiradores=5)
+        ot = _ot(num_tiradores=5, modelos_tiradores=["Round"])
         r = check_handcut_vs_tiradores(dxfs, ot, reglas)
         assert r.resultado == "FAIL"
         assert "3" in r.detalle and "5" in r.detalle
 
+    def test_fail_square_sin_handcut(self, reglas):
+        """Square → requiere HANDCUT; layer ausente → FAIL."""
+        dxfs = [_dxf(conteos={})]
+        ot = _ot(num_tiradores=4, modelos_tiradores=["Square"])
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "FAIL"
+
+    def test_fail_pill_sin_handcut(self, reglas):
+        """Pill → requiere HANDCUT; layer ausente → FAIL."""
+        dxfs = [_dxf(conteos={})]
+        ot = _ot(num_tiradores=2, modelos_tiradores=["Pill"])
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "FAIL"
+
+    # --- Tiradores SIN geometría (Superline / Bar / Knob…) ---
+
+    def test_skip_superline_sin_handcut(self, reglas):
+        """Superline no genera HANDCUT → SKIP aunque no haya layer."""
+        dxfs = [_dxf(conteos={})]
+        ot = _ot(num_tiradores=4, modelos_tiradores=["Superline"])
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "SKIP"
+        assert "Superline" in r.detalle
+
+    def test_skip_bar_sin_handcut(self, reglas):
+        """Bar no genera HANDCUT → SKIP."""
+        dxfs = [_dxf(conteos={})]
+        ot = _ot(num_tiradores=3, modelos_tiradores=["Bar"])
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "SKIP"
+
+    def test_skip_bar_superline_sin_handcut(self, reglas):
+        """Bar + Superline: ninguno genera HANDCUT → SKIP."""
+        dxfs = [_dxf(conteos={})]
+        ot = _ot(num_tiradores=5, modelos_tiradores=["Bar", "Superline"])
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "SKIP"
+
+    # --- Mezcla: al menos uno con geometría ---
+
+    def test_fail_pill_superline_sin_handcut(self, reglas):
+        """Pill + Superline: Pill requiere HANDCUT; si no hay → FAIL."""
+        dxfs = [_dxf(conteos={})]
+        ot = _ot(num_tiradores=6, modelos_tiradores=["Pill", "Superline"])
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "FAIL"
+
+    def test_pass_round_bar_con_handcut(self, reglas):
+        """Round + Bar: Round requiere HANDCUT; cuenta coincide → PASS."""
+        layer = "9_11-HANDCUT-EM5-Z18"
+        dxfs = [_dxf(conteos={layer: 4})]
+        ot = _ot(num_tiradores=4, modelos_tiradores=["Round", "Bar"])
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "PASS"
+
+    # --- Casos base ---
+
     def test_skip_ot_sin_tiradores(self, reglas):
+        """Sin tiradores en OT → SKIP."""
         dxfs = [_dxf()]
         ot = _ot(num_tiradores=0)
         r = check_handcut_vs_tiradores(dxfs, ot, reglas)
         assert r.resultado == "SKIP"
 
     def test_skip_sin_dxfs(self, reglas):
-        r = check_handcut_vs_tiradores([], _ot(num_tiradores=3), reglas)
+        """Sin DXFs → SKIP."""
+        r = check_handcut_vs_tiradores([], _ot(num_tiradores=3, modelos_tiradores=["Round"]), reglas)
         assert r.resultado == "SKIP"
 
 
