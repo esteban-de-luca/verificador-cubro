@@ -96,9 +96,9 @@ puerta_alto_sufijo_estandar: 98
 # Dimensiones estándar de balda con herrajes ocultos
 # -----------------------------------------------------------------------------
 baldas_dimensiones:
-  - {ancho: 600,  alto: 200, herrajes: 2}
-  - {ancho: 800,  alto: 200, herrajes: 2}
-  - {ancho: 1200, alto: 200, herrajes: 3}
+  - {ancho: 200, alto: 600,  herrajes: 2}
+  - {ancho: 200, alto: 800,  herrajes: 2}
+  - {ancho: 200, alto: 1200, herrajes: 3}
 
 # -----------------------------------------------------------------------------
 # LAYERS DXF (Checks C-30 a C-43)

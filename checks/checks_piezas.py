@@ -318,23 +318,54 @@ def check_cazoletas(piezas: list[Pieza], reglas: dict) -> CheckResult:
 # C-26: Baldas B con mec. tienen dimensiones estándar
 # ---------------------------------------------------------------------------
 
+_MEC_BALDA_VALIDO = {"mec.", "mec"}
+
+
 def check_baldas_dimensiones(piezas: list[Pieza], reglas: dict) -> CheckResult:
-    """C-26: Balda con herrajes ocultos tiene dimensiones estándar. Bloquea: Sí."""
+    """C-26: Balda con herrajes ocultos tiene dimensiones estándar. Bloquea: Sí.
+
+    Reglas para baldas (tipología B):
+      - Mecanizado vacío → sin mecanizar, no aplica (N/A).
+      - Mecanizado == "mec."/"mec"/"Mec." (case-insensitive) → se valida dim.
+      - Cualquier otro valor → FAIL (mecanizado no permitido en balda).
+      - Si la dim solo encaja al intercambiar ancho↔alto → SKIP (ambigüedad).
+    """
     baldas_std: list[dict] = reglas["baldas_dimensiones"]
     combos_validos = {(b["ancho"], b["alto"]) for b in baldas_std}
-    errores = []
+    errores: list[str] = []
+    intercambiadas: list[str] = []
     for p in piezas:
         if p.tipologia != "B":
             continue
-        if not p.mecanizado.strip():
+        mec = p.mecanizado.strip()
+        if not mec:
             continue  # sin mecanizado → no aplica
-        if (p.ancho, p.alto) not in combos_validos:
+        if mec.lower() not in _MEC_BALDA_VALIDO:
             errores.append(
-                f"{p.id}: {p.ancho}×{p.alto} no es dimensión estándar de balda "
-                f"(válidas: {sorted(combos_validos)})"
+                f"{p.id}: mecanizado '{mec}' no permitido en balda "
+                f"(solo se admite vacío o 'mec.')"
             )
+            continue
+        if (p.ancho, p.alto) in combos_validos:
+            continue
+        if (p.alto, p.ancho) in combos_validos:
+            intercambiadas.append(f"{p.id}: {p.ancho}×{p.alto} (dim. válida con ancho↔alto intercambiados)")
+            continue
+        errores.append(
+            f"{p.id}: {p.ancho}×{p.alto} no es dimensión estándar de balda "
+            f"(válidas: {sorted(combos_validos)})"
+        )
+    if errores:
+        return _resultado("C-26", "Baldas con mec. tienen dimensiones estándar",
+                          errores, True, _GRUPO_MEC)
+    if intercambiadas:
+        return _skip(
+            "C-26", "Baldas con mec. tienen dimensiones estándar",
+            "Ancho/alto intercambiados en: " + "; ".join(intercambiadas),
+            _GRUPO_MEC,
+        )
     return _resultado("C-26", "Baldas con mec. tienen dimensiones estándar",
-                      errores, True, _GRUPO_MEC)
+                      [], True, _GRUPO_MEC)
 
 
 # ---------------------------------------------------------------------------
