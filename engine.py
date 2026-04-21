@@ -49,6 +49,8 @@ from checks.checks_piezas import (
     check_posicion_sin_tirador,
     check_cazoletas,
     check_baldas_dimensiones,
+    check_cajones_dimensiones,
+    check_mec_torn_en_ancho_especial,
     check_mecanizado_rodapies,
     check_tirador_en_sin_mecanizado,
     check_alto_puerta_sufijo,
@@ -268,6 +270,8 @@ def _ejecutar_checks(
     resultados.append(check_posicion_sin_tirador(datos.piezas))
     resultados.append(check_cazoletas(datos.piezas, reglas))
     resultados.append(check_baldas_dimensiones(datos.piezas, reglas))
+    resultados.append(check_cajones_dimensiones(datos.piezas, reglas))
+    resultados.append(check_mec_torn_en_ancho_especial(datos.piezas))
     resultados.append(check_mecanizado_rodapies(datos.piezas, reglas))
     resultados.append(check_tirador_en_sin_mecanizado(datos.piezas, reglas))
     resultados.append(check_alto_puerta_sufijo(datos.piezas, reglas))

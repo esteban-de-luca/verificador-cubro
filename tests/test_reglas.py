@@ -244,9 +244,9 @@ class TestBaldas:
                 assert campo in balda
 
     def test_balda_600_existe(self, reglas):
-        """PASS: balda de 600mm de ancho está definida."""
-        anchos = [b["ancho"] for b in reglas["baldas_dimensiones"]]
-        assert 600 in anchos
+        """PASS: balda con dimensión 600 (como alto) está definida."""
+        altos = [b["alto"] for b in reglas["baldas_dimensiones"]]
+        assert 600 in altos
 
     def test_balda_sin_campo_lanza_error(self, tmp_path):
         """FAIL: balda sin 'herrajes' → ValueError."""

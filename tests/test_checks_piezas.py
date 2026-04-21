@@ -17,7 +17,8 @@ from checks.checks_piezas import (
     check_acabados, check_sufijo_tipologia, check_apertura_puertas,
     check_apertura_pax_con_tirador, check_sin_apertura_cajones,
     check_tirador_completo, check_posicion_sin_tirador, check_cazoletas,
-    check_baldas_dimensiones, check_mecanizado_rodapies,
+    check_baldas_dimensiones, check_cajones_dimensiones,
+    check_mec_torn_en_ancho_especial, check_mecanizado_rodapies,
     check_tirador_en_sin_mecanizado, check_alto_puerta_sufijo,
 )
 
@@ -349,20 +350,27 @@ class TestC25:
 # C-26
 # ===========================================================================
 class TestC26:
-    def test_pass_balda_600(self, r):
-        piezas = [Pieza("B1", 600, 200, "MDF", "LAC", "Blanco", "B",
-                        mecanizado="herrajes")]
+    def test_pass_balda_estandar(self, r):
+        # Nueva orientación: ancho=200, alto=600 → estándar
+        piezas = [Pieza("B1", 200, 600, "MDF", "LAC", "Blanco", "B",
+                        mecanizado="mec.")]
         assert check_baldas_dimensiones(piezas, r).resultado == "PASS"
 
     def test_fail_balda_dimensiones_no_estandar(self, r):
         piezas = [Pieza("B1", 750, 300, "MDF", "LAC", "Blanco", "B",
-                        mecanizado="herrajes")]
+                        mecanizado="mec.")]
         res = check_baldas_dimensiones(piezas, r)
         assert res.resultado == "FAIL" and res.bloquea
 
     def test_pass_balda_sin_mecanizado_no_aplica(self, r):
         piezas = [Pieza("B1", 750, 300, "PLY", "LAM", "Pale", "B")]
         assert check_baldas_dimensiones(piezas, r).resultado == "PASS"
+
+    def test_fail_balda_mecanizado_no_permitido(self, r):
+        piezas = [Pieza("B1", 200, 600, "MDF", "LAC", "Blanco", "B",
+                        mecanizado="cazoletas")]
+        res = check_baldas_dimensiones(piezas, r)
+        assert res.resultado == "FAIL" and res.bloquea
 
 
 # ===========================================================================
@@ -447,3 +455,80 @@ class TestC29:
         piezas = [Pieza("M1-C1", 400, 200, "PLY", "LAM", "Pale", "C",
                         mecanizado="torn.")]
         assert check_alto_puerta_sufijo(piezas, r).resultado == "PASS"
+
+
+# ===========================================================================
+# C-18
+# ===========================================================================
+class TestC18:
+    def test_pass_cajon_dim_estandar(self, r):
+        piezas = [Pieza("M1-C1", 598, 198, "PLY", "LAM", "Pale", "C")]
+        assert check_cajones_dimensiones(piezas, r).resultado == "PASS"
+
+    def test_pass_varios_cajones_estandar(self, r):
+        piezas = [
+            Pieza("M1-C1", 598, 198, "PLY", "LAM", "Pale", "C"),
+            Pieza("M1-C2", 798, 398, "PLY", "LAM", "Pale", "C"),
+            Pieza("M1-C3", 446, 398, "PLY", "LAM", "Pale", "C"),
+        ]
+        assert check_cajones_dimensiones(piezas, r).resultado == "PASS"
+
+    def test_skip_dim_intercambiadas(self, r):
+        # 198×598 no está en lista (aunque 598×198 sí) → SKIP
+        piezas = [Pieza("M1-C1", 198, 598, "PLY", "LAM", "Pale", "C")]
+        res = check_cajones_dimensiones(piezas, r)
+        assert res.resultado == "SKIP"
+
+    def test_skip_dim_no_estandar(self, r):
+        piezas = [Pieza("M1-C1", 500, 250, "PLY", "LAM", "Pale", "C")]
+        res = check_cajones_dimensiones(piezas, r)
+        assert res.resultado == "SKIP"
+
+    def test_no_aplica_no_cajon(self, r):
+        piezas = [Pieza("M1-P1", 123, 456, "PLY", "LAM", "Pale", "P")]
+        assert check_cajones_dimensiones(piezas, r).resultado == "PASS"
+
+
+# ===========================================================================
+# C-19
+# ===========================================================================
+class TestC19:
+    def test_pass_ancho_estandar_no_aplica(self):
+        piezas = [Pieza("M1-C1", 598, 198, "PLY", "LAM", "Pale", "C",
+                        mecanizado="3 cazta.")]
+        assert check_mec_torn_en_ancho_especial(piezas).resultado == "PASS"
+
+    def test_pass_446_con_torn(self):
+        piezas = [Pieza("M1-C1", 446, 398, "PLY", "LAM", "Pale", "C",
+                        mecanizado="torn.")]
+        assert check_mec_torn_en_ancho_especial(piezas).resultado == "PASS"
+
+    def test_pass_596_con_Torn_mayuscula(self):
+        piezas = [Pieza("M1-C1", 596, 398, "PLY", "LAM", "Pale", "C",
+                        mecanizado="Torn.")]
+        assert check_mec_torn_en_ancho_especial(piezas).resultado == "PASS"
+
+    def test_fail_446_con_cazta(self):
+        piezas = [Pieza("M1-C1", 446, 398, "PLY", "LAM", "Pale", "C",
+                        mecanizado="3 cazta.")]
+        res = check_mec_torn_en_ancho_especial(piezas)
+        assert res.resultado == "FAIL"
+        assert "446" in res.detalle
+
+    def test_fail_596_con_Cazta_mayuscula(self):
+        piezas = [Pieza("M1-P1", 596, 398, "PLY", "LAM", "Pale", "P",
+                        mecanizado="2 Cazta.")]
+        res = check_mec_torn_en_ancho_especial(piezas)
+        assert res.resultado == "FAIL"
+
+    def test_fail_puerta_596_mec_vacio(self):
+        piezas = [Pieza("M1-P1", 596, 398, "PLY", "LAM", "Pale", "P",
+                        mecanizado="")]
+        res = check_mec_torn_en_ancho_especial(piezas)
+        assert res.resultado == "FAIL"
+
+    def test_no_aplica_balda(self):
+        # Tipología B no entra aunque tenga ancho 446
+        piezas = [Pieza("M1-B1", 446, 200, "PLY", "LAM", "Pale", "B",
+                        mecanizado="3 cazta.")]
+        assert check_mec_torn_en_ancho_especial(piezas).resultado == "PASS"

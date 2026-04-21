@@ -434,3 +434,63 @@ def check_alto_puerta_sufijo(piezas: list[Pieza], reglas: dict) -> CheckResult:
             _GRUPO_MEC,
         )
     return _pass("C-29", "Alto puerta P es valor estándar", False, _GRUPO_MEC)
+
+
+# ---------------------------------------------------------------------------
+# C-18: Cajones C tienen dimensiones estándar
+# ---------------------------------------------------------------------------
+
+def check_cajones_dimensiones(piezas: list[Pieza], reglas: dict) -> CheckResult:
+    """C-18: Cajón C tiene dimensiones estándar (ancho×alto). Bloquea: No.
+
+    Si dims exactas en lista → PASS.
+    Si no coinciden (en cualquier orientación) → SKIP con el listado de piezas
+    afectadas para revisión manual.
+    """
+    cajones_std: list[dict] = reglas["cajones_dimensiones"]
+    combos_validos = {(c["ancho"], c["alto"]) for c in cajones_std}
+    no_estandar = [
+        f"{p.id}: {p.ancho}×{p.alto}"
+        for p in piezas
+        if p.tipologia == "C" and (p.ancho, p.alto) not in combos_validos
+    ]
+    if no_estandar:
+        return _skip(
+            "C-18", "Cajones C con dimensiones estándar",
+            "Cajones con dim. fuera del estándar: " + "; ".join(no_estandar),
+            _GRUPO_PIEZAS,
+        )
+    return _pass("C-18", "Cajones C con dimensiones estándar", False, _GRUPO_PIEZAS)
+
+
+# ---------------------------------------------------------------------------
+# C-19: Piezas P o C con ancho 446 o 596 deben tener mecanizado "torn."
+# ---------------------------------------------------------------------------
+
+_RE_CAZTA_CON_NUM = re.compile(r"\d+\s*cazta\.?", re.IGNORECASE)
+
+
+def check_mec_torn_en_ancho_especial(piezas: list[Pieza]) -> CheckResult:
+    """C-19: Puertas P y cajones C con ancho 446 o 596 deben usar 'torn.',
+    nunca 'N cazta.' Bloquea: Sí.
+    """
+    anchos_especiales = {446, 596}
+    errores: list[str] = []
+    for p in piezas:
+        if p.tipologia not in ("P", "C"):
+            continue
+        if p.ancho not in anchos_especiales:
+            continue
+        mec = p.mecanizado.strip()
+        if mec.lower() == "torn." or mec.lower() == "torn":
+            continue
+        if _RE_CAZTA_CON_NUM.search(mec):
+            errores.append(
+                f"{p.id}: ancho={p.ancho} con mecanizado '{mec}' — debe ser 'torn.'"
+            )
+        else:
+            errores.append(
+                f"{p.id}: ancho={p.ancho} con mecanizado '{mec}' (esperado 'torn.')"
+            )
+    return _resultado("C-19", "Ancho 446/596 con mecanizado 'torn.'",
+                      errores, True, _GRUPO_MEC)

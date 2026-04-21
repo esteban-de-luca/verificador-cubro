@@ -25,6 +25,7 @@ _SECCIONES_OBLIGATORIAS_REGLAS = [
     "cazoletas_metod",
     "puerta_alturas_estandar",
     "baldas_dimensiones",
+    "cajones_dimensiones",
     "layers",
     "desbaste_tirador",
     "tiradores_con_geometria_dxf",

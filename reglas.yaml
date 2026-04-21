@@ -136,6 +136,47 @@ baldas_dimensiones:
   - {ancho: 200, alto: 1200, herrajes: 3}
 
 # -----------------------------------------------------------------------------
+# CAJONES (Check C-18)
+# Dimensiones estándar (ancho x alto) de cajones C
+# -----------------------------------------------------------------------------
+cajones_dimensiones:
+  - {ancho: 198, alto: 798}
+  - {ancho: 298, alto: 798}
+  - {ancho: 398, alto: 98}
+  - {ancho: 398, alto: 198}
+  - {ancho: 398, alto: 398}
+  - {ancho: 398, alto: 798}
+  - {ancho: 446, alto: 398}
+  - {ancho: 598, alto: 98}
+  - {ancho: 598, alto: 148}
+  - {ancho: 598, alto: 198}
+  - {ancho: 598, alto: 298}
+  - {ancho: 598, alto: 398}
+  - {ancho: 596, alto: 398}
+  - {ancho: 598, alto: 598}
+  - {ancho: 598, alto: 798}
+  - {ancho: 798, alto: 98}
+  - {ancho: 798, alto: 198}
+  - {ancho: 798, alto: 398}
+  - {ancho: 798, alto: 598}
+  - {ancho: 198, alto: 871}
+  - {ancho: 298, alto: 871}
+  - {ancho: 398, alto: 871}
+  - {ancho: 598, alto: 871}
+  - {ancho: 798, alto: 871}
+  - {ancho: 198, alto: 671}
+  - {ancho: 298, alto: 671}
+  - {ancho: 398, alto: 671}
+  - {ancho: 598, alto: 671}
+  - {ancho: 798, alto: 671}
+  - {ancho: 398, alto: 471}
+  - {ancho: 598, alto: 471}
+  - {ancho: 798, alto: 471}
+  - {ancho: 398, alto: 271}
+  - {ancho: 598, alto: 271}
+  - {ancho: 798, alto: 271}
+
+# -----------------------------------------------------------------------------
 # LAYERS DXF (Checks C-30 a C-43)
 # -----------------------------------------------------------------------------
 layers:
