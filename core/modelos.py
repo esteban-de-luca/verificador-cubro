@@ -128,7 +128,7 @@ class OTData:
     # Campos opcionales — se rellenan si el extractor los detecta
     ids_piezas: list[str] = field(default_factory=list)  # IDs individuales del Packing List (C-12)
     num_ventilacion: int = 0          # Nº rejillas ventilación declaradas (C-40)
-    tiene_hornacina: bool | None = None   # OT declara colgador de hornacina (C-41)
+    colgadores_hornacina: int | None = None   # OT declara cantidad de colgadores de hornacina: 0="No", N≥1=cantidad, None=ausente (C-41)
     tiene_tensores: bool | None = None    # OT declara tensores (C-42)
     modelos_tiradores: list[str] = field(default_factory=list)  # Modelos de tirador: ["Round"], ["Superline", "Pill"]…
 

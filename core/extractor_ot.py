@@ -89,9 +89,9 @@ _RE_PL_FILA = re.compile(
 _RE_VENTILACION = re.compile(
     r"rejillas?\s+de\s+ventilaci[oó]n[:\s]+(\d+)", re.IGNORECASE
 )
-# "Colgador de hornacina: No"  /  "Sí"
+# "Colgador de hornacina: No"  /  "Colgador de hornacina: 2"  /  (legacy "Sí")
 _RE_HORNACINA = re.compile(
-    r"colgador\s+de\s+hornacina[:\s]+(s[ií]|no)", re.IGNORECASE
+    r"colgador\s+de\s+hornacina[:\s]+(s[ií]|no|\d+)", re.IGNORECASE
 )
 # "Tensores: No"  /  "Sí"
 _RE_TENSORES = re.compile(
@@ -253,12 +253,18 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
     m_vent = _RE_VENTILACION.search(texto)
     num_ventilacion = int(m_vent.group(1)) if m_vent else 0
 
-    # Hornacina — "Colgador de hornacina: No/Sí"
+    # Hornacina — "Colgador de hornacina: No" / "Colgador de hornacina: 2" / legacy "Sí"
     m_hor = _RE_HORNACINA.search(texto)
     if m_hor:
-        tiene_hornacina: bool | None = m_hor.group(1).lower().startswith("s")
+        val = m_hor.group(1).lower()
+        if val == "no":
+            colgadores_hornacina: int | None = 0
+        elif val.startswith("s"):
+            colgadores_hornacina = 1  # legacy "Sí" — cantidad desconocida, asumimos ≥1
+        else:
+            colgadores_hornacina = int(val)
     else:
-        tiene_hornacina = None
+        colgadores_hornacina = None
 
     # Tensores — "Tensores: No/Sí"
     m_ten = _RE_TENSORES.search(texto)
@@ -287,7 +293,7 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
         num_tiradores=num_tiradores,
         tableros=tableros,
         num_ventilacion=num_ventilacion,
-        tiene_hornacina=tiene_hornacina,
+        colgadores_hornacina=colgadores_hornacina,
         tiene_tensores=tiene_tensores,
         observaciones_cnc=obs_cnc,
         observaciones_produccion=obs_prod,

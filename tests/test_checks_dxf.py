@@ -61,11 +61,11 @@ def _pieza(id="M1-P1", material="PLY", gama="LAM", acabado="Pale",
     return p
 
 
-def _ot(num_tiradores=0, num_ventilacion=0, tiene_hornacina=None, tiene_tensores=None,
+def _ot(num_tiradores=0, num_ventilacion=0, colgadores_hornacina=None, tiene_tensores=None,
         modelos_tiradores=None):
     ot = OTData("EU-21822", "Test", "Semana 18", 10, 50.0, num_tiradores)
     ot.num_ventilacion = num_ventilacion
-    ot.tiene_hornacina = tiene_hornacina
+    ot.colgadores_hornacina = colgadores_hornacina
     ot.tiene_tensores = tiene_tensores
     ot.modelos_tiradores = modelos_tiradores or []
     return ot
@@ -513,30 +513,30 @@ class TestC41:
 
     def test_pass_ot_hornacina_y_layer_presente(self, reglas):
         dxfs = [_dxf(layers={"CONTROL", "MECANISMO_HORNACINA_Z12"})]
-        r = check_mecanismo_hornacina(dxfs, _ot(tiene_hornacina=True), reglas)
+        r = check_mecanismo_hornacina(dxfs, _ot(colgadores_hornacina=2), reglas)
         assert r.resultado == "PASS"
 
     def test_pass_ot_sin_hornacina_y_sin_layer(self, reglas):
         dxfs = [_dxf(layers={"CONTROL"})]
-        r = check_mecanismo_hornacina(dxfs, _ot(tiene_hornacina=False), reglas)
+        r = check_mecanismo_hornacina(dxfs, _ot(colgadores_hornacina=0), reglas)
         assert r.resultado == "PASS"
 
     def test_fail_ot_hornacina_sin_layer(self, reglas):
         dxfs = [_dxf(layers={"CONTROL"})]
-        r = check_mecanismo_hornacina(dxfs, _ot(tiene_hornacina=True), reglas)
+        r = check_mecanismo_hornacina(dxfs, _ot(colgadores_hornacina=1), reglas)
         assert r.resultado == "FAIL"
 
     def test_fail_layer_sin_hornacina_en_ot(self, reglas):
         dxfs = [_dxf(layers={"CONTROL", "MECANISMO_HORNACINA_Z12"})]
-        r = check_mecanismo_hornacina(dxfs, _ot(tiene_hornacina=False), reglas)
+        r = check_mecanismo_hornacina(dxfs, _ot(colgadores_hornacina=0), reglas)
         assert r.resultado == "FAIL"
 
     def test_skip_ot_sin_dato(self, reglas):
-        r = check_mecanismo_hornacina([_dxf()], _ot(tiene_hornacina=None), reglas)
+        r = check_mecanismo_hornacina([_dxf()], _ot(colgadores_hornacina=None), reglas)
         assert r.resultado == "SKIP"
 
     def test_skip_sin_dxfs(self, reglas):
-        r = check_mecanismo_hornacina([], _ot(tiene_hornacina=True), reglas)
+        r = check_mecanismo_hornacina([], _ot(colgadores_hornacina=1), reglas)
         assert r.resultado == "SKIP"
 
 

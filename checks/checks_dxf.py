@@ -373,25 +373,33 @@ def check_ventilacion_rejilla(
 def check_mecanismo_hornacina(
     dxfs: list[DXFDoc], ot: OTData, reglas: dict
 ) -> CheckResult:
-    """C-41: Layer MECANISMO_HORNACINA presente ↔ OT declara hornacina. Bloquea: Sí."""
+    """C-41: Layer MECANISMO_HORNACINA presente ↔ OT declara colgadores. Bloquea: Sí.
+
+    Reglas:
+      - Layer presente en DXFs → OT debe declarar "Colgador de hornacina: N" con N≥1.
+      - Layer ausente en DXFs → OT debe declarar "Colgador de hornacina: No" (N=0).
+      - OT sin el campo → SKIP.
+    """
     s = _si_no_dxfs("C-41", "Layer hornacina coherente con OT", dxfs)
     if s:
         return s
-    if ot.tiene_hornacina is None:
+    if ot.colgadores_hornacina is None:
         return _skip("C-41", "Layer hornacina coherente con OT",
                      "OT sin dato de colgador de hornacina", _GRUPO)
 
     layer_hor: str = reglas["layers"]["colgador_hornacina"]
     todas = _todas_layers(dxfs)
     tiene_layer = layer_hor in todas
+    n = ot.colgadores_hornacina
 
-    if ot.tiene_hornacina and not tiene_layer:
+    if tiene_layer and n == 0:
         return _fail("C-41", "Layer hornacina coherente con OT",
-                     f"OT declara hornacina pero falta layer '{layer_hor}' en DXFs",
+                     f"Layer '{layer_hor}' en DXFs pero OT declara 'No' (0 colgadores). "
+                     f"La OT debería indicar 'Colgador de hornacina: N' con N≥1",
                      True, _GRUPO)
-    if not ot.tiene_hornacina and tiene_layer:
+    if not tiene_layer and n >= 1:
         return _fail("C-41", "Layer hornacina coherente con OT",
-                     f"Layer '{layer_hor}' en DXFs pero OT no declara hornacina",
+                     f"OT declara {n} colgador(es) pero falta layer '{layer_hor}' en DXFs",
                      True, _GRUPO)
     return _pass("C-41", "Layer hornacina coherente con OT", True, _GRUPO)
 
