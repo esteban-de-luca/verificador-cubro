@@ -723,3 +723,28 @@ class TestC44:
     def test_id_check(self, reglas):
         r = check_distancia_bisagras([], reglas)
         assert r.id == "C-44"
+
+    def test_pass_dos_puertas_mismo_y_nesting(self, reglas):
+        # Regresión T2: 2 puertas METOD horizontales en el mismo Y.
+        # La distancia inter-puerta (939mm) no es múltiplo de 50 pero NO es
+        # un error — es el hueco de nesting entre piezas distintas.
+        # Intra-puerta: 700mm = 14×50 ✓ en cada puerta.
+        circs = [
+            # Puerta A
+            _circulo(L7, -7165.42, -2891.0),
+            _circulo(L7, -6465.42, -2891.0),
+            # Puerta B
+            _circulo(L7, -5526.42, -2891.0),
+            _circulo(L7, -4826.42, -2891.0),
+            # Companions (6-POCKET) — uno por cada 7-POCKET
+            _circulo(L6M, -7187.92, -2881.5, r=4.0),
+            _circulo(L6M, -7142.92, -2881.5, r=4.0),
+            _circulo(L6M, -6487.92, -2881.5, r=4.0),
+            _circulo(L6M, -6442.92, -2881.5, r=4.0),
+            _circulo(L6M, -5548.92, -2881.5, r=4.0),
+            _circulo(L6M, -5503.92, -2881.5, r=4.0),
+            _circulo(L6M, -4848.92, -2881.5, r=4.0),
+            _circulo(L6M, -4803.92, -2881.5, r=4.0),
+        ]
+        r = check_distancia_bisagras([_dxf_con_circulos(circs)], reglas)
+        assert r.resultado == "PASS", r.detalle

@@ -544,13 +544,35 @@ def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
             if len(vals) < 2:
                 continue
 
+            eje = "X" if orient == "V" else "Y"
+
+            # Agrupar en cadenas de puerta: un gap no-múltiplo de paso puede
+            # ser (a) un límite de nesting entre puertas distintas o (b) un
+            # error real de posición. Distinguir:
+            #   • Gap no-múltiplo entre dos cadenas de ≥2 círculos → límite
+            #     de nesting (puertas contiguas en el tablero): ignorar.
+            #   • Gap no-múltiplo conectado a una cadena de 1 círculo → bisagra
+            #     huérfana o fuera de posición → error real.
+            cadenas: list[list[float]] = []
+            puentes: list[tuple[float, int]] = []  # (dist, left_idx)
+            cadena_actual: list[float] = [vals[0]]
             for k in range(len(vals) - 1):
                 dist = round(abs(vals[k + 1] - vals[k]), 4)
-                residuo = dist % paso
-                if residuo != 0.0:
+                if dist % paso == 0.0:
+                    cadena_actual.append(vals[k + 1])
+                else:
+                    cadenas.append(cadena_actual)
+                    puentes.append((dist, len(cadenas) - 1))
+                    cadena_actual = [vals[k + 1]]
+            cadenas.append(cadena_actual)
+
+            for dist, left_idx in puentes:
+                right_idx = left_idx + 1
+                # Solo es error si alguna de las dos cadenas adyacentes
+                # tiene un único círculo (no es una puerta válida de ≥2 bisagras)
+                if len(cadenas[left_idx]) < 2 or len(cadenas[right_idx]) < 2:
                     nearest_n = round(dist / paso)
                     desv = dist - nearest_n * paso
-                    eje = "X" if orient == "V" else "Y"
                     errores.append(
                         f"{dxf.nombre} — bisagra {tipo} "
                         f"({'vertical' if orient == 'V' else 'horizontal'}, "
