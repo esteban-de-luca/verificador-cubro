@@ -448,3 +448,118 @@ def check_layers_desuso(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     return _resultado("C-43", "Layers en desuso ausentes",
                       [f"Layer en desuso detectado: '{l}'" for l in encontrados],
                       False, _GRUPO, tipo_fail="WARN")
+
+
+# ---------------------------------------------------------------------------
+# C-44: Distancia entre bisagras múltiplo exacto del paso (METOD=50mm, PAX=32mm)
+# ---------------------------------------------------------------------------
+
+import math as _math
+
+
+def _bisagra_nearest(cx: float, cy: float, pool: list[dict]) -> tuple[dict | None, float]:
+    """Devuelve (círculo_más_cercano, distancia) del pool dado."""
+    if not pool:
+        return None, float("inf")
+    best = min(pool, key=lambda c: _math.hypot(c["x"] - cx, c["y"] - cy))
+    return best, _math.hypot(best["x"] - cx, best["y"] - cy)
+
+
+def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
+    """C-44: Distancia entre bisagras debe ser múltiplo exacto del paso.
+
+    METOD (6-POCKET companion) → paso 50 mm.
+    PAX   (6A-POCKET companion) → paso 32 mm.
+    Tolerancia: cero — el residuo dist % paso debe ser exactamente 0.
+    Bloquea: Sí.
+    """
+    ID = "C-44"
+    DESC = "Distancia entre bisagras múltiplo exacto de paso"
+
+    s = _si_no_dxfs(ID, DESC, dxfs)
+    if s:
+        return s
+
+    cfg = reglas["bisagra_distancia"]
+    layer_7p: str = cfg["layer_7pocket"]
+    layer_6m: str = cfg["layer_6pocket_metod"]
+    layer_6p: str = cfg["layer_6pocket_pax"]
+    paso_metod: int = int(cfg["paso_metod"])
+    paso_pax: int = int(cfg["paso_pax"])
+    tol_grupo: float = 5.0  # mm — tolerancia para agrupar círculos en la misma puerta
+
+    errores: list[str] = []
+    algun_tablero_con_bisagras = False
+
+    for dxf in dxfs:
+        c7  = [c for c in dxf.circulos if c["layer"] == layer_7p]
+        c6m = [c for c in dxf.circulos if c["layer"] == layer_6m]
+        c6p = [c for c in dxf.circulos if c["layer"] == layer_6p]
+
+        if not c7 or (not c6m and not c6p):
+            continue  # sin bisagras en este tablero
+        algun_tablero_con_bisagras = True
+
+        # --- Clasificar cada 7-POCKET: tipo (METOD/PAX) y orientación (V/H) ---
+        clasificados: list[dict] = []
+        for c in c7:
+            _, d_m = _bisagra_nearest(c["x"], c["y"], c6m)
+            comp_p, d_p = _bisagra_nearest(c["x"], c["y"], c6p)
+            es_metod = d_m <= d_p
+            paso = paso_metod if es_metod else paso_pax
+            tipo = "METOD" if es_metod else "PAX"
+            comp, _ = _bisagra_nearest(c["x"], c["y"], c6m if es_metod else c6p)
+            if comp is None:
+                continue
+            dx = abs(comp["x"] - c["x"])
+            dy = abs(comp["y"] - c["y"])
+            # El companion se desplaza a lo largo de la columna de bisagras:
+            # |dY| > |dX| → columna en Y → puerta VERTICAL → agrupar por X
+            # |dX| > |dY| → columna en X → puerta HORIZONTAL → agrupar por Y
+            orient = "V" if dy >= dx else "H"
+            clasificados.append({**c, "tipo": tipo, "paso": paso, "orient": orient})
+
+        # --- Agrupar por puerta (coordenada constante) ---
+        grupos: dict[tuple, list[dict]] = {}
+        for item in clasificados:
+            coord_key = item["x"] if item["orient"] == "V" else item["y"]
+            found = next(
+                (k for k in grupos
+                 if k[0] == item["orient"]
+                 and k[1] == item["tipo"]
+                 and abs(k[2] - coord_key) < tol_grupo),
+                None,
+            )
+            if found is None:
+                found = (item["orient"], item["tipo"], coord_key)
+                grupos[found] = []
+            grupos[found].append(item)
+
+        # --- Verificar distancias con tolerancia cero ---
+        for (orient, tipo, coord_key), items in grupos.items():
+            paso = items[0]["paso"]
+            vals = sorted(i["y"] for i in items) if orient == "V" \
+                else sorted(i["x"] for i in items)
+
+            if len(vals) < 2:
+                continue
+
+            for k in range(len(vals) - 1):
+                dist = round(abs(vals[k + 1] - vals[k]), 4)
+                residuo = dist % paso
+                if residuo != 0.0:
+                    nearest_n = round(dist / paso)
+                    desv = dist - nearest_n * paso
+                    eje = "X" if orient == "V" else "Y"
+                    errores.append(
+                        f"{dxf.nombre} — bisagra {tipo} "
+                        f"({'vertical' if orient == 'V' else 'horizontal'}, "
+                        f"{eje}≈{coord_key:.0f}): "
+                        f"distancia {dist}mm no es múltiplo de {paso}mm "
+                        f"(más cercano {nearest_n}×{paso}={nearest_n * paso}mm, "
+                        f"desv. {desv:+.1f}mm)"
+                    )
+
+    if not algun_tablero_con_bisagras:
+        return _skip(ID, DESC, "Sin circles 7-POCKET con companion en los DXFs", _GRUPO)
+    return _resultado(ID, DESC, errores, True, _GRUPO)

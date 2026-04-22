@@ -1,4 +1,4 @@
-"""tests/test_checks_dxf.py — Tests de C-30 a C-43."""
+"""tests/test_checks_dxf.py — Tests de C-30 a C-44."""
 
 from __future__ import annotations
 import sys
@@ -25,6 +25,7 @@ from checks.checks_dxf import (
     check_mecanismo_hornacina,
     check_tirantes,
     check_layers_desuso,
+    check_distancia_bisagras,
 )
 
 
@@ -600,3 +601,125 @@ class TestC43:
     def test_id_check(self, reglas):
         r = check_layers_desuso([], reglas)
         assert r.id == "C-43"
+
+
+# ---------------------------------------------------------------------------
+# C-44
+# ---------------------------------------------------------------------------
+
+def _circulo(layer: str, x: float, y: float, r: float = 17.5) -> dict:
+    return {"layer": layer, "x": x, "y": y, "r": r}
+
+
+def _dxf_con_circulos(circulos: list[dict]) -> "DXFDoc":
+    """DXFDoc mínimo con la lista de círculos indicada."""
+    return DXFDoc(
+        nombre="TEST_MDF_LACA_BLANCO_T1.dxf", tablero_num=1,
+        material="MDF", gama="LAC", acabado="Blanco",
+        circulos=circulos,
+    )
+
+
+L7 = "7-POCKET-EM5-Z14"
+L6M = "6-POCKET-EM5-Z14"
+L6P = "6A-POCKET-EM5-Z14_PAX"
+
+
+class TestC44:
+
+    # --- SKIP ---
+    def test_skip_sin_dxfs(self, reglas):
+        r = check_distancia_bisagras([], reglas)
+        assert r.resultado == "SKIP"
+
+    def test_skip_sin_circulos_pocket(self, reglas):
+        # DXF sin ningún 7-POCKET
+        dxfs = [_dxf_con_circulos([])]
+        r = check_distancia_bisagras(dxfs, reglas)
+        assert r.resultado == "SKIP"
+
+    # --- METOD vertical: paso 50mm ---
+    def test_pass_metod_vertical_2bisagras(self, reglas):
+        # Puerta vertical: X constante, bisagras separadas 700mm (14×50)
+        # Companion offset en Y (dY=22.5 > dX=9.5) → orientación V
+        circs = [
+            _circulo(L7,  -31.0, -6354.5),
+            _circulo(L7,  -31.0, -5654.5),
+            _circulo(L6M, -40.5, -6377.0, r=4.0),  # companion: dX=9.5, dY=22.5
+            _circulo(L6M, -40.5, -5677.0, r=4.0),
+        ]
+        r = check_distancia_bisagras([_dxf_con_circulos(circs)], reglas)
+        assert r.resultado == "PASS"
+
+    def test_fail_metod_vertical_distancia_no_multiplo(self, reglas):
+        # Bisagras separadas 518mm — no es múltiplo de 50
+        circs = [
+            _circulo(L7,  1195.0, -6690.5),
+            _circulo(L7,  1195.0, -6172.5),
+            _circulo(L7,  1195.0, -5654.5),
+            _circulo(L6M, 1185.5, -6713.0, r=4.0),
+            _circulo(L6M, 1185.5, -6195.0, r=4.0),
+            _circulo(L6M, 1185.5, -5677.0, r=4.0),
+        ]
+        r = check_distancia_bisagras([_dxf_con_circulos(circs)], reglas)
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "518" in r.detalle
+
+    def test_pass_metod_vertical_3bisagras_550(self, reglas):
+        # 3 bisagras separadas 550mm (11×50) cada una
+        circs = [
+            _circulo(L7,  -31.0, -6754.5),
+            _circulo(L7,  -31.0, -6204.5),
+            _circulo(L7,  -31.0, -5654.5),
+            _circulo(L6M, -40.5, -6777.0, r=4.0),
+            _circulo(L6M, -40.5, -6227.0, r=4.0),
+            _circulo(L6M, -40.5, -5677.0, r=4.0),
+        ]
+        r = check_distancia_bisagras([_dxf_con_circulos(circs)], reglas)
+        assert r.resultado == "PASS"
+
+    # --- METOD horizontal: paso 50mm ---
+    def test_pass_metod_horizontal_650mm(self, reglas):
+        # Puerta horizontal: Y constante, bisagras separadas 650mm (13×50)
+        # Companion offset en X (dX=22.5 > dY=9.5) → orientación H
+        circs = [
+            _circulo(L7,  -706.5, -31.0),
+            _circulo(L7,   -56.5, -31.0),
+            _circulo(L6M, -729.0, -40.5, r=4.0),  # companion: dX=22.5, dY=9.5
+            _circulo(L6M,  -79.0, -40.5, r=4.0),
+        ]
+        r = check_distancia_bisagras([_dxf_con_circulos(circs)], reglas)
+        assert r.resultado == "PASS"
+
+    # --- PAX horizontal: paso 32mm ---
+    def test_pass_pax_horizontal_exacto(self, reglas):
+        # Bisagras PAX separadas 928mm (29×32) y 192mm (6×32)
+        circs = [
+            _circulo(L7,  186.5, -1093.7),
+            _circulo(L7, 1114.5, -1093.7),
+            _circulo(L7, 1306.5, -1093.7),
+            _circulo(L6P, 164.0, -1084.6, r=2.5),
+            _circulo(L6P, 209.0, -1084.6, r=2.5),
+            _circulo(L6P,1092.0, -1084.6, r=2.5),
+        ]
+        r = check_distancia_bisagras([_dxf_con_circulos(circs)], reglas)
+        assert r.resultado == "PASS"
+
+    def test_fail_pax_horizontal_3mm_desviacion(self, reglas):
+        # Bisagra PAX desplazada 3mm: 195mm en vez de 192mm (6×32)
+        circs = [
+            _circulo(L7,  4506.3, -1093.7),
+            _circulo(L7,  5434.3, -1093.7),
+            _circulo(L7,  5629.3, -1093.7),  # ← 3mm fuera de posición
+            _circulo(L6P, 4483.8, -1084.6, r=2.5),
+            _circulo(L6P, 4528.8, -1084.6, r=2.5),
+            _circulo(L6P, 5411.8, -1084.6, r=2.5),
+        ]
+        r = check_distancia_bisagras([_dxf_con_circulos(circs)], reglas)
+        assert r.resultado == "FAIL"
+        assert "195" in r.detalle or "925" in r.detalle
+
+    def test_id_check(self, reglas):
+        r = check_distancia_bisagras([], reglas)
+        assert r.id == "C-44"

@@ -259,6 +259,17 @@ layers:
     - 7-POCKET-EM5-Z14
 
 # -----------------------------------------------------------------------------
+# DISTANCIA BISAGRAS (Check C-44)
+# Paso METOD = 50 mm, paso PAX = 32 mm. Tolerancia: cero.
+# -----------------------------------------------------------------------------
+bisagra_distancia:
+  layer_7pocket: "7-POCKET-EM5-Z14"        # agujero principal (común METOD y PAX)
+  layer_6pocket_metod: "6-POCKET-EM5-Z14"  # companion METOD → paso 50 mm
+  layer_6pocket_pax: "6A-POCKET-EM5-Z14_PAX"  # companion PAX → paso 32 mm
+  paso_metod: 50
+  paso_pax: 32
+
+# -----------------------------------------------------------------------------
 # DESBASTE TIRADOR (Check C-36)
 # Mapping color tirador → layer DXF esperado
 # La clave _LIN aplica a cualquier pieza de gama LIN independientemente del color

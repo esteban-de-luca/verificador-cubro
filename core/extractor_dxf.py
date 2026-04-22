@@ -142,12 +142,28 @@ def _parsear_entities_raw(contenido: str) -> list[dict]:
             if valor in ("VERTEX", "SEQEND", "ENDSEC"):
                 ent_actual = None
             else:
-                ent_actual = {"tipo": valor, "layer": "0", "texto": ""}
+                ent_actual = {"tipo": valor, "layer": "0", "texto": "",
+                              "x": None, "y": None, "r": None}
         elif ent_actual is not None:
             if codigo == 8:    # layer
                 ent_actual["layer"] = valor
             elif codigo == 1:  # texto primario (TEXT / MTEXT)
                 ent_actual["texto"] = valor
+            elif codigo == 10:  # coordenada X (CIRCLE, ARC…)
+                try:
+                    ent_actual["x"] = float(valor)
+                except ValueError:
+                    pass
+            elif codigo == 20:  # coordenada Y
+                try:
+                    ent_actual["y"] = float(valor)
+                except ValueError:
+                    pass
+            elif codigo == 40:  # radio (CIRCLE) o primera magnitud
+                try:
+                    ent_actual["r"] = float(valor)
+                except ValueError:
+                    pass
 
     if ent_actual is not None:
         entidades.append(ent_actual)
@@ -181,6 +197,21 @@ def _extraer_layers_y_conteos(
             conteos_layer[layer] = conteos_layer.get(layer, 0) + 1
 
     return layers, layers_con_geometria, conteos_layer
+
+
+def _extraer_circulos(entidades: list[dict]) -> list[dict]:
+    """
+    Devuelve los círculos con coordenadas válidas para checks geométricos (C-44).
+    Cada entrada: {'layer': str, 'x': float, 'y': float, 'r': float}.
+    """
+    return [
+        {"layer": e["layer"], "x": e["x"], "y": e["y"], "r": e["r"]}
+        for e in entidades
+        if e["tipo"] == "CIRCLE"
+        and e.get("x") is not None
+        and e.get("y") is not None
+        and e.get("r") is not None
+    ]
 
 
 def _extraer_ids_piezas(entidades: list[dict]) -> list[str]:
@@ -237,6 +268,7 @@ def leer_dxf(origen: BinaryIO | Path | str, nombre: str | None = None) -> DXFDoc
     entidades = _parsear_entities_raw(contenido)
     layers, layers_con_geometria, conteos_layer = _extraer_layers_y_conteos(entidades)
     ids_piezas = _extraer_ids_piezas(entidades)
+    circulos = _extraer_circulos(entidades)
 
     return DXFDoc(
         nombre=nombre,
@@ -248,6 +280,7 @@ def leer_dxf(origen: BinaryIO | Path | str, nombre: str | None = None) -> DXFDoc
         layers_con_geometria=layers_con_geometria,
         conteos_layer=conteos_layer,
         ids_piezas=ids_piezas,
+        circulos=circulos,
     )
 
 

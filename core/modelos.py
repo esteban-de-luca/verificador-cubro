@@ -161,6 +161,10 @@ class DXFDoc:
     #: IDs de piezas detectados en anotaciones (texto en 0_ANOTACIONES).
     ids_piezas: list[str] = field(default_factory=list)
 
+    #: Círculos con coordenadas extraídas para checks geométricos (C-44).
+    #: Cada dict: {'layer': str, 'x': float, 'y': float, 'r': float}.
+    circulos: list[dict] = field(default_factory=list)
+
     @property
     def clave_material(self) -> str:
         return f"{self.material}_{self.gama}_{self.acabado}"
