@@ -54,9 +54,10 @@ _RE_PESO = re.compile(
     r"peso\s+(?:estimado\s+)?(?:total|bruto)[:\s]+([\d,. ]+)\s*kg",
     re.IGNORECASE,
 )
-# "# Tiradores 13"  o  "Tiradores: 13"
+# "# Tiradores 8 6 12" (una columna por material)  o  "Tiradores: 13"
 _RE_TIRADORES = re.compile(
-    r"(?:#\s*tiradores?|tiradores?)[:\s]+(\d+)", re.IGNORECASE
+    r"^(?:#\s*)?tiradores?[:\s]+([\d\s]+)$",
+    re.IGNORECASE | re.MULTILINE,
 )
 # Fila "Tiradores  Superline" (sin #) — captura modelo/s del tirador
 _RE_MODELO_TIRADOR = re.compile(
@@ -246,7 +247,7 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
         for tok in m.group(1).split()
         if tok.strip() and tok.strip() != "-"
     ))
-    num_tiradores = int(m_tir.group(1)) if m_tir else 0
+    num_tiradores = sum(int(n) for n in m_tir.group(1).split()) if m_tir else 0
 
     # Tableros por material (tabla INFORMACION DE CORTE)
     tableros, materiales_sin_cantidad = _parsear_tabla_corte(texto)
