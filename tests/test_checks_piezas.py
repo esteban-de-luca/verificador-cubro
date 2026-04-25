@@ -148,6 +148,12 @@ class TestC14:
         res = check_material_consistente(piezas, etq)
         assert res.resultado == "FAIL"
 
+    def test_pass_acabado_normaliza_guion_vs_espacio(self):
+        # Despiece 'Marble-Green' vs etiqueta 'Marble green' → equivalentes
+        piezas = [_p("M1-P1", mat="PLY", gama="LAM", acabado="Marble-Green")]
+        etq = [_e("M1-P1", mat="PLY", gama="LAM", acabado="Marble green")]
+        assert check_material_consistente(piezas, etq).resultado == "PASS"
+
 
 # ===========================================================================
 # C-15
