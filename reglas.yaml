@@ -147,6 +147,8 @@ cajones_dimensiones:
   - {ancho: 398, alto: 398}
   - {ancho: 398, alto: 798}
   - {ancho: 446, alto: 398}
+  - {ancho: 598, alto: 38}
+  - {ancho: 598, alto: 50}
   - {ancho: 598, alto: 98}
   - {ancho: 598, alto: 148}
   - {ancho: 598, alto: 198}
