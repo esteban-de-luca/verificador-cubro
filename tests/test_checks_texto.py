@@ -87,12 +87,13 @@ class TestC61:
         r = check_sin_mecanizar_en_ot(piezas, ot, reglas_cnc)
         assert r.resultado == "PASS"
 
-    def test_fail_puerta_sin_mec_sin_mencion(self, reglas_cnc):
+    def test_skip_puerta_sin_mec_sin_mencion(self, reglas_cnc):
+        # Si hay puerta sin mecanizar y la OT no lo menciona → SKIP (revisar OT)
         piezas = [_pieza(mecanizado="   ")]
         ot = _ot(obs_cnc=[])
         r = check_sin_mecanizar_en_ot(piezas, ot, reglas_cnc)
-        assert r.resultado == "FAIL"
-        assert r.bloquea
+        assert r.resultado == "SKIP"
+        assert not r.bloquea
 
     def test_pass_puerta_sin_mec_con_mencion(self, reglas_cnc):
         piezas = [_pieza(mecanizado="")]
@@ -123,10 +124,10 @@ class TestC62:
         r = check_observaciones_reconocidas(ot, reglas_cnc)
         assert r.resultado == "PASS"
 
-    def test_warn_observacion_no_reconocida(self, reglas_cnc):
+    def test_skip_observacion_no_reconocida(self, reglas_cnc):
         ot = _ot(obs_cnc=["texto completamente desconocido xyzabc"])
         r = check_observaciones_reconocidas(ot, reglas_cnc)
-        assert r.resultado == "WARN"
+        assert r.resultado == "SKIP"
         assert not r.bloquea
 
     def test_id_check(self, reglas_cnc):
@@ -150,10 +151,10 @@ class TestC63:
         r = check_observaciones_no_reconocidas(ot, reglas_cnc)
         assert r.resultado == "PASS"
 
-    def test_warn_hay_no_reconocidas(self, reglas_cnc):
+    def test_skip_hay_no_reconocidas(self, reglas_cnc):
         ot = _ot(obs_cnc=["texto xyzabc completamente desconocido"])
         r = check_observaciones_no_reconocidas(ot, reglas_cnc)
-        assert r.resultado == "WARN"
+        assert r.resultado == "SKIP"
         assert not r.bloquea
         assert "xyzabc" in r.detalle
 

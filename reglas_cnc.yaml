@@ -50,3 +50,23 @@ excepciones:
   - patron: "{id}: bisagras en posicion especial"
     tipo: BISAGRAS_ESPECIAL
     justifica_check: []
+
+  - patron: "encastres"
+    tipo: ENCASTRES
+    justifica_check: []
+
+  - patron: "se deben enviar"
+    tipo: ENVIO_MATERIAL_EXTRA
+    justifica_check: []
+
+  - patron: "tiras de montaje"
+    tipo: TIRAS_MONTAJE
+    justifica_check: []
+
+  - patron: "canto"
+    tipo: CANTO
+    justifica_check: []
+
+  - patron: "cara a"
+    tipo: CARA_A
+    justifica_check: []

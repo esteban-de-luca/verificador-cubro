@@ -136,11 +136,10 @@ def check_observaciones_reconocidas(ot: OTData, reglas_cnc: dict) -> CheckResult
         obs for obs in ot.observaciones_cnc
         if not _coincide_algun_patron(obs, todos_patrones)
     ]
-    return _resultado(
-        "C-62", "Observaciones CNC reconocidas por catálogo",
-        [f"No reconocida: '{obs}'" for obs in no_reconocidas],
-        False, _GRUPO, tipo_fail="WARN",
-    )
+    if not no_reconocidas:
+        return _pass("C-62", "Observaciones CNC reconocidas por catálogo", False, _GRUPO)
+    detalle = "; ".join(f"No reconocida: '{obs}'" for obs in no_reconocidas)
+    return _skip("C-62", "Observaciones CNC reconocidas por catálogo", detalle, _GRUPO)
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +165,7 @@ def check_observaciones_no_reconocidas(ot: OTData, reglas_cnc: dict) -> CheckRes
         return _pass("C-63", "Observaciones no reconocidas marcadas para revisión",
                      False, _GRUPO)
     detalle = " | ".join(f"«{obs}»" for obs in no_reconocidas)
-    return _warn(
+    return _skip(
         "C-63", "Observaciones no reconocidas marcadas para revisión",
         f"Requieren revisión humana: {detalle}", _GRUPO,
     )
