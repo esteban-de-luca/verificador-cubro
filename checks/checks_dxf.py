@@ -157,6 +157,7 @@ def check_corte_perimetral(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     cp = reglas["layers"]["corte_perimetral"]
     layer_estandar = cp["estandar"]
     layer_laca_no_std = cp["laca_no_estandar"]
+    layer_rodapie = cp["rodapie"]
     lac_std = {a.lower() for a in cp.get("lac_acabados_estandar", [])}
 
     proyecto_tiene_lac_no_std = any(
@@ -171,7 +172,8 @@ def check_corte_perimetral(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
         else:
             layer_esperado = layer_estandar
 
-        if layer_esperado not in dxf.layers:
+        # Tableros solo de rodapié usan CORTAR_RODAPIE como corte perimetral
+        if layer_esperado not in dxf.layers and layer_rodapie not in dxf.layers:
             errores.append(
                 f"{dxf.nombre} ({dxf.gama} {dxf.acabado}): "
                 f"falta layer corte '{layer_esperado}'"

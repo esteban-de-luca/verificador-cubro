@@ -268,6 +268,13 @@ class TestC35:
         r = check_corte_perimetral(dxfs, reglas)
         assert r.resultado == "PASS"
 
+    def test_pass_tablero_solo_rodapie(self, reglas):
+        # Tablero solo de rodapié usa CORTAR_RODAPIE como corte perimetral
+        dxfs = [_dxf(gama="LAM", acabado="Pale",
+                     layers={"10_12-CORTAR_RODAPIE", "13-BISELAR-EM5-Z0_8"})]
+        r = check_corte_perimetral(dxfs, reglas)
+        assert r.resultado == "PASS"
+
 
 # ---------------------------------------------------------------------------
 # C-36
