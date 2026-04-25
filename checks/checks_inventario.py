@@ -141,7 +141,11 @@ def check_num_dxf_vs_ot(dxfs: list[DXFDoc], ot: OTData) -> CheckResult:
 
     # Referencia para comparar con DXFs: total de cabecera si existe, si no suma por material.
     total_ot = ot.num_tableros_total if ot.num_tableros_total is not None else sum(ot.tableros.values())
-    n_dxf = len(dxfs)
+    # Excluir DXFs cortados de retal — no son tableros nuevos, sino reutilización de sobrante.
+    n_dxf = sum(
+        1 for d in dxfs
+        if not any("retal" in l.lower() and "utilizado" in l.lower() for l in d.layers)
+    )
     if n_dxf == total_ot:
         return _pass("C-03", "Nº DXFs == nº tableros OT", True, _GRUPO)
     return _fail(
