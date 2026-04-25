@@ -1,21 +1,29 @@
 """
 pages/2_Cola_Global.py — Verificación en lote de proyectos no aprobados.
 
-Escanea TODAS las semanas de cada responsable y muestra todos los proyectos
-que no estén en estado OK (PENDIENTE, ADVERTENCIAS, BLOQUEADO), agrupados
-por responsable en expanders. Permite seleccionarlos (individual o por grupo)
-y verificarlos secuencialmente con barra de progreso. Al terminar, los
-resultados ocupan la zona principal ordenados por severidad.
+Carga las semanas y proyectos en PARALELO (ThreadPoolExecutor) y los renderiza
+PROGRESIVAMENTE: cada responsable aparece en la UI en cuanto termina su carga,
+en lugar de esperar a que estén todos. Cache manual en session_state (TTL 120 s)
+para que las recargas siguientes sean instantáneas.
+
+Muestra todos los proyectos que no estén en estado OK (PENDIENTE, ADVERTENCIAS,
+BLOQUEADO) agrupados por responsable en expanders.
 """
 
 from __future__ import annotations
 
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any
 
 import streamlit as st
+from googleapiclient.discovery import build
 
 import config
 from core.modelos import InformeFinal
+from drive.cliente import obtener_credenciales
 from drive.navegador import listar_semanas, listar_proyectos
 from drive.gestor import aplicar_prefijo_estado
 from engine import verificar_proyecto
@@ -26,8 +34,11 @@ from app import _extraer_id_proyecto, _url_drive, _informe_a_texto
 
 
 # ---------------------------------------------------------------------------
-# Estado de sesión
+# Estado de sesión y cache manual
 # ---------------------------------------------------------------------------
+
+_CACHE_TTL = 120  # segundos
+
 
 def _init_state() -> None:
     st.session_state.setdefault("cola_seleccion", set())   # set[folder_id]
@@ -39,49 +50,48 @@ def _chk_key(folder_id: str) -> str:
     return f"chk_{folder_id}"
 
 
-def _set_seleccion(ids_a_marcar: set[str], pendientes_ids: set[str]) -> None:
-    """
-    Sincroniza la selección con el estado de los widgets checkbox.
-
-    `ids_a_marcar` es el conjunto de IDs que deben quedar marcados.
-    `pendientes_ids` es el universo de IDs que tienen checkbox renderizado
-    (necesario para desmarcar los que NO estén en `ids_a_marcar`).
-    """
+def _set_seleccion(ids_a_marcar: set[str], universo_ids: set[str]) -> None:
+    """Sincroniza selección y widgets checkbox."""
     st.session_state.cola_seleccion = set(ids_a_marcar)
-    for pid in pendientes_ids:
+    for pid in universo_ids:
         st.session_state[_chk_key(pid)] = (pid in ids_a_marcar)
 
 
-# ---------------------------------------------------------------------------
-# Carga de proyectos no aprobados
-# ---------------------------------------------------------------------------
+def _cache_valid() -> bool:
+    return (
+        "cola_data" in st.session_state
+        and time.time() - st.session_state.get("cola_data_ts", 0) < _CACHE_TTL
+    )
 
-@st.cache_data(ttl=120, show_spinner=False)
-def _cargar_proyectos_no_aprobados(_servicio_ref) -> list[dict]:
-    """
-    Recorre TODAS las semanas de cada responsable y devuelve los proyectos
-    que no estén en estado OK. Estados incluidos: PENDIENTE, ADVERTENCIAS,
-    BLOQUEADO.
-    """
-    proyectos: list[dict] = []
-    for responsable in config.RESPONSABLES:
-        for semana in listar_semanas(_servicio_ref, responsable):
-            for p in listar_proyectos(_servicio_ref, semana["id"]):
-                if p["estado"] == "OK":
-                    continue
-                proyectos.append({
-                    **p,
-                    "responsable": responsable,
-                    "semana_name": semana["name"],
-                    "semana_id": semana["id"],
-                    "semana_numero": semana["numero"],
-                    "id_proyecto": _extraer_id_proyecto(p["nombre_limpio"]),
-                })
-    return proyectos
+
+def _cache_set(proyectos: list[dict]) -> None:
+    st.session_state["cola_data"] = proyectos
+    st.session_state["cola_data_ts"] = time.time()
+
+
+def _cache_invalidate() -> None:
+    st.session_state.pop("cola_data", None)
+    st.session_state.pop("cola_data_ts", None)
 
 
 # ---------------------------------------------------------------------------
-# Callback de sincronización checkbox → cola_seleccion
+# Servicio Drive thread-local (googleapiclient.Resource no es thread-safe)
+# ---------------------------------------------------------------------------
+
+_tls = threading.local()
+
+
+def _thread_service() -> Any:
+    """Devuelve el servicio Drive del hilo actual, construyéndolo si no existe."""
+    srv = getattr(_tls, "srv", None)
+    if srv is None:
+        srv = build("drive", "v3", credentials=obtener_credenciales(), cache_discovery=False)
+        _tls.srv = srv
+    return srv
+
+
+# ---------------------------------------------------------------------------
+# Callback checkbox → selección
 # ---------------------------------------------------------------------------
 
 def _on_check_change(pid: str) -> None:
@@ -92,7 +102,7 @@ def _on_check_change(pid: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ZONA 1 — Cola agrupada por responsable
+# Render de un grupo (responsable)
 # ---------------------------------------------------------------------------
 
 _ORDEN_ESTADOS = ("PENDIENTE", "ADVERTENCIAS", "BLOQUEADO")
@@ -110,7 +120,6 @@ def _resumen_estados(proyectos: list[dict]) -> str:
 
 
 def _render_grupo_responsable(responsable: str, proyectos: list[dict]) -> None:
-    """Expander con los proyectos no aprobados de un responsable."""
     n = len(proyectos)
     seleccionados_grupo = sum(
         1 for p in proyectos if p["id"] in st.session_state.cola_seleccion
@@ -123,7 +132,6 @@ def _render_grupo_responsable(responsable: str, proyectos: list[dict]) -> None:
         label += f"  ·  ☑ {seleccionados_grupo}"
 
     with st.expander(label, expanded=True):
-        # Botones de selección por grupo
         col_sel, col_des = st.columns([1, 1])
         with col_sel:
             if st.button(
@@ -132,15 +140,13 @@ def _render_grupo_responsable(responsable: str, proyectos: list[dict]) -> None:
                 use_container_width=True,
             ):
                 ids_grupo = {p["id"] for p in proyectos}
-                nueva = st.session_state.cola_seleccion | ids_grupo
-                # Sincroniza solo los chk de este grupo a True
                 for pid in ids_grupo:
                     st.session_state[_chk_key(pid)] = True
-                st.session_state.cola_seleccion = nueva
+                st.session_state.cola_seleccion |= ids_grupo
                 st.rerun()
         with col_des:
             if st.button(
-                f"Deseleccionar grupo",
+                "Deseleccionar grupo",
                 key=f"des_grupo_{responsable}",
                 use_container_width=True,
                 disabled=(seleccionados_grupo == 0),
@@ -151,7 +157,6 @@ def _render_grupo_responsable(responsable: str, proyectos: list[dict]) -> None:
                 st.session_state.cola_seleccion -= ids_grupo
                 st.rerun()
 
-        # Cabecera de columnas
         h = st.columns([0.35, 1.1, 3, 0.9, 1.2, 0.7])
         h[0].markdown("&nbsp;", unsafe_allow_html=True)
         h[1].markdown("**ID**")
@@ -166,8 +171,6 @@ def _render_grupo_responsable(responsable: str, proyectos: list[dict]) -> None:
             )
 
             chk_key = _chk_key(p["id"])
-            # Inicializa el widget state SOLO la primera vez (no en cada rerun
-            # — si no, sobrescribiríamos las acciones del usuario)
             if chk_key not in st.session_state:
                 st.session_state[chk_key] = p["id"] in st.session_state.cola_seleccion
 
@@ -191,14 +194,11 @@ def _render_grupo_responsable(responsable: str, proyectos: list[dict]) -> None:
             col_link.markdown(f"[↗ Drive]({_url_drive(p['id'])})")
 
 
-def _render_zona_cola(todos: list[dict]) -> bool:
-    """Devuelve True si el usuario ha pulsado Verificar."""
-    n_total = len(todos)
-    todos_ids = {p["id"] for p in todos}
-    n_responsables = len({p["responsable"] for p in todos})
-    n_sel = sum(1 for p in todos if p["id"] in st.session_state.cola_seleccion)
+# ---------------------------------------------------------------------------
+# Render de cabecera + controles globales
+# ---------------------------------------------------------------------------
 
-    # ── Cabecera ───────────────────────────────────────────────────────────
+def _render_header(n_total: int, n_responsables: int) -> None:
     col_info, col_refresh = st.columns([4, 1])
     col_info.markdown(
         f"### {n_total} proyecto{'s' if n_total != 1 else ''} no aprobado"
@@ -206,10 +206,16 @@ def _render_zona_cola(todos: list[dict]) -> bool:
         f"{n_responsables} responsable{'s' if n_responsables != 1 else ''}"
     )
     if col_refresh.button("↺ Actualizar", use_container_width=True, key="btn_refresh"):
-        _cargar_proyectos_no_aprobados.clear()
+        _cache_invalidate()
         st.rerun()
 
-    # ── Controles globales + botón Verificar ───────────────────────────────
+
+def _render_controles(todos: list[dict]) -> bool:
+    """Devuelve True si se ha pulsado Verificar."""
+    todos_ids = {p["id"] for p in todos}
+    n_sel = sum(1 for p in todos if p["id"] in st.session_state.cola_seleccion)
+    n_total = len(todos)
+
     col_all, col_none, col_cnt, col_go = st.columns([1, 1, 1.4, 2.2])
     with col_all:
         if st.button("Todos", use_container_width=True, key="btn_todos",
@@ -228,7 +234,7 @@ def _render_zona_cola(todos: list[dict]) -> bool:
             unsafe_allow_html=True,
         )
     with col_go:
-        verify_clicked = st.button(
+        return st.button(
             f"▶ Verificar {n_sel} proyecto{'s' if n_sel != 1 else ''}",
             type="primary",
             disabled=(n_sel == 0),
@@ -236,32 +242,163 @@ def _render_zona_cola(todos: list[dict]) -> bool:
             key="btn_verificar",
         )
 
+
+# ---------------------------------------------------------------------------
+# Render síncrono (cache hit)
+# ---------------------------------------------------------------------------
+
+def _render_zona_cola(todos: list[dict]) -> bool:
+    n_total = len(todos)
+    n_responsables = len({p["responsable"] for p in todos})
+
+    _render_header(n_total, n_responsables)
+    verify_clicked = _render_controles(todos)
     st.markdown("---")
 
     if not todos:
         st.success("¡No hay proyectos por verificar! Todo aprobado.")
         return False
 
-    # ── Agrupar por responsable y renderizar ───────────────────────────────
     por_responsable: dict[str, list[dict]] = {}
     for p in todos:
         por_responsable.setdefault(p["responsable"], []).append(p)
-
-    # Dentro de cada grupo, ordena por semana descendente y luego por nombre
     for ps in por_responsable.values():
         ps.sort(key=lambda p: (-p["semana_numero"], p["nombre_limpio"].lower()))
 
     for responsable in config.RESPONSABLES:
         ps = por_responsable.get(responsable)
-        if not ps:
-            continue
-        _render_grupo_responsable(responsable, ps)
+        if ps:
+            _render_grupo_responsable(responsable, ps)
 
     return verify_clicked
 
 
 # ---------------------------------------------------------------------------
-# Verificación secuencial con progreso
+# Render progresivo (cache miss) — paralelo + streaming
+# ---------------------------------------------------------------------------
+
+def _proyecto_dict(p: dict, responsable: str, semana: dict) -> dict:
+    return {
+        **p,
+        "responsable": responsable,
+        "semana_name": semana["name"],
+        "semana_id": semana["id"],
+        "semana_numero": semana["numero"],
+        "id_proyecto": _extraer_id_proyecto(p["nombre_limpio"]),
+    }
+
+
+def _stream_cargar_y_renderizar() -> tuple[list[dict], bool]:
+    """
+    Paraleliza la carga de Drive y renderiza cada responsable en cuanto
+    termina su parte. Devuelve (proyectos_total, verify_clicked).
+    """
+    # Pre-asigna placeholders en orden de render
+    header_ph = st.empty()
+    controls_ph = st.empty()
+    sep_ph = st.empty()
+    sep_ph.markdown("---")
+
+    resp_phs: dict[str, Any] = {}
+    for r in config.RESPONSABLES:
+        ph = st.empty()
+        ph.markdown(f"_⏳ **{r}** — esperando…_")
+        resp_phs[r] = ph
+
+    header_ph.markdown("### ⏳ Cargando estructura de semanas…")
+
+    # ── Fase 1: listar_semanas en paralelo (5 calls) ───────────────────────
+    semanas_por_resp: dict[str, list[dict]] = {}
+    with ThreadPoolExecutor(max_workers=5) as exe:
+        futs = {
+            exe.submit(lambda r=r: listar_semanas(_thread_service(), r)): r
+            for r in config.RESPONSABLES
+        }
+        for fut in as_completed(futs):
+            r = futs[fut]
+            try:
+                semanas_por_resp[r] = fut.result()
+            except Exception as exc:
+                semanas_por_resp[r] = []
+                resp_phs[r].error(f"Error en {r}: {exc}")
+
+    # Si un responsable no tiene semanas, vacía su placeholder ya
+    for r in config.RESPONSABLES:
+        if not semanas_por_resp.get(r):
+            resp_phs[r].empty()
+
+    # ── Fase 2: listar_proyectos en paralelo (todas las semanas) ───────────
+    tasks = [(r, sem) for r, sems in semanas_por_resp.items() for sem in sems]
+    proyectos_por_resp: dict[str, list[dict]] = {r: [] for r in config.RESPONSABLES}
+    pendientes_por_resp = {r: len(sems) for r, sems in semanas_por_resp.items()}
+
+    n_tasks = len(tasks)
+    completados = 0
+
+    if n_tasks > 0:
+        header_ph.markdown(f"### ⏳ Cargando proyectos…  (0/{n_tasks} semanas)")
+
+        with ThreadPoolExecutor(max_workers=10) as exe:
+            futs2 = {
+                exe.submit(
+                    lambda sid=sem["id"]: listar_proyectos(_thread_service(), sid)
+                ): (r, sem)
+                for r, sem in tasks
+            }
+            for fut in as_completed(futs2):
+                r, sem = futs2[fut]
+                try:
+                    raw = fut.result()
+                except Exception as exc:
+                    raw = []
+                    st.toast(f"Error en {r}/{sem['name']}: {exc}", icon="⚠️")
+
+                for p in raw:
+                    if p["estado"] == "OK":
+                        continue
+                    proyectos_por_resp[r].append(_proyecto_dict(p, r, sem))
+
+                pendientes_por_resp[r] -= 1
+                completados += 1
+
+                header_ph.markdown(
+                    f"### ⏳ Cargando proyectos…  "
+                    f"({completados}/{n_tasks} semanas)"
+                )
+
+                # Si este responsable está completo, lo renderizamos ya
+                if pendientes_por_resp[r] == 0:
+                    ps = proyectos_por_resp[r]
+                    ps.sort(key=lambda p: (-p["semana_numero"], p["nombre_limpio"].lower()))
+                    if ps:
+                        with resp_phs[r].container():
+                            _render_grupo_responsable(r, ps)
+                    else:
+                        resp_phs[r].empty()
+
+    # ── Consolidación ──────────────────────────────────────────────────────
+    proyectos_total: list[dict] = []
+    for r in config.RESPONSABLES:
+        proyectos_total.extend(proyectos_por_resp[r])
+
+    n_total = len(proyectos_total)
+    n_resp = sum(1 for ps in proyectos_por_resp.values() if ps)
+
+    # Render final de cabecera y controles
+    with header_ph.container():
+        _render_header(n_total, n_resp)
+
+    with controls_ph.container():
+        verify_clicked = _render_controles(proyectos_total)
+
+    if n_total == 0:
+        st.success("¡No hay proyectos por verificar! Todo aprobado.")
+
+    return proyectos_total, verify_clicked
+
+
+# ---------------------------------------------------------------------------
+# Verificación secuencial
 # ---------------------------------------------------------------------------
 
 def _verificar_cola(seleccionados: list[dict]) -> None:
@@ -302,12 +439,11 @@ def _verificar_cola(seleccionados: list[dict]) -> None:
     barra.progress(1.0, text="✓ Completado")
     contenedor_estado.empty()
 
-    # Limpia selección y los chk_* widgets para que la próxima carga arranque
-    # con todos desmarcados.
     ids_verificados = {p["id"] for p in seleccionados}
     for pid in ids_verificados:
         st.session_state.pop(_chk_key(pid), None)
     st.session_state.cola_seleccion.clear()
+    _cache_invalidate()
     st.rerun()
 
 
@@ -409,7 +545,7 @@ def _render_resultado(r: dict) -> None:
                         try:
                             _aplicar_estado_a_drive(r, estado)
                             st.toast(f"✓ {nombre}: [{estado}] aplicado")
-                            _cargar_proyectos_no_aprobados.clear()
+                            _cache_invalidate()
                         except Exception as exc:
                             st.error(str(exc))
                     st.rerun()
@@ -473,7 +609,7 @@ def _render_zona_resultados(resultados: list[dict]) -> None:
                             _aplicar_estado_a_drive(r, "APROBADO")
                         except Exception as exc:
                             fallos.append(f"{r['proyecto']['nombre_limpio']}: {exc}")
-                _cargar_proyectos_no_aprobados.clear()
+                _cache_invalidate()
                 if fallos:
                     for f in fallos:
                         st.error(f)
@@ -495,6 +631,27 @@ def _render_zona_resultados(resultados: list[dict]) -> None:
 # Página
 # ---------------------------------------------------------------------------
 
+def _do_zona_cola() -> None:
+    """Resuelve cache hit/miss y dispara verificación si procede."""
+    if _cache_valid():
+        todos = st.session_state["cola_data"]
+        verify_clicked = _render_zona_cola(todos)
+    else:
+        try:
+            todos, verify_clicked = _stream_cargar_y_renderizar()
+        except Exception as exc:
+            st.error(f"Error al conectar con Drive: {exc}")
+            return
+        _cache_set(todos)
+
+    if verify_clicked:
+        seleccionados = [
+            p for p in todos if p["id"] in st.session_state.cola_seleccion
+        ]
+        if seleccionados:
+            _verificar_cola(seleccionados)
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Ficheros pendientes · Verificador CUBRO",
@@ -512,18 +669,7 @@ def main() -> None:
         _render_zona_resultados(st.session_state.cola_resultados)
         st.markdown("---")
         with st.expander("➕ Verificar más proyectos", expanded=False):
-            try:
-                todos = _cargar_proyectos_no_aprobados(get_servicio())
-            except Exception as exc:
-                st.error(f"Error al conectar con Drive: {exc}")
-                return
-            if _render_zona_cola(todos):
-                seleccionados = [
-                    p for p in todos
-                    if p["id"] in st.session_state.cola_seleccion
-                ]
-                if seleccionados:
-                    _verificar_cola(seleccionados)
+            _do_zona_cola()
         return
 
     st.caption(
@@ -531,20 +677,7 @@ def main() -> None:
         "agrupados por responsable. Selecciónalos y pulsa Verificar."
     )
 
-    with st.spinner("Escaneando todas las semanas…"):
-        try:
-            todos = _cargar_proyectos_no_aprobados(get_servicio())
-        except Exception as exc:
-            st.error(f"Error al conectar con Drive: {exc}")
-            return
-
-    if _render_zona_cola(todos):
-        seleccionados = [
-            p for p in todos
-            if p["id"] in st.session_state.cola_seleccion
-        ]
-        if seleccionados:
-            _verificar_cola(seleccionados)
+    _do_zona_cola()
 
 
 if __name__ == "__main__":
