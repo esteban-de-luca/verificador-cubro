@@ -182,6 +182,15 @@ class TestC03:
         ot = _ot(tableros={"PLY_LAM_Pale": 3, "MDF_LAC_Blanco": 2})
         assert check_num_dxf_vs_ot(dxfs, ot).resultado == "PASS"
 
+    def test_pass_dxf_de_retal_no_cuenta(self):
+        # OT declara 5 tableros; hay 6 DXFs pero uno se corta de retal → no cuenta
+        dxfs = [_dxf(num=i) for i in range(1, 6)]
+        dxf_retal = DXFDoc("EU-22467_X_PLY_LAM_Pale_T2.dxf", 2, "PLY", "LAM", "Pale",
+                           layers={"CONTROL", "RETAL UTILIZADO"})
+        dxfs.append(dxf_retal)
+        ot = _ot(tableros={"PLY_LAM_Pale": 3, "MDF_LAC_Blanco": 2})
+        assert check_num_dxf_vs_ot(dxfs, ot).resultado == "PASS"
+
 
 # ---------------------------------------------------------------------------
 # C-04
