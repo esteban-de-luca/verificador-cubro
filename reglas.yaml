@@ -376,6 +376,7 @@ nomenclatura:
     dossier_corto: "CUBRO_DOSSIER_*"
     extraccion: "EXTRACCION_*"
     informe:    "informe_*"
+    packing_list_cliente: "PACKING LIST CLIENTE_*"
   prefijos_estado:
     bloqueado:    "[BLOQUEADO] "
     advertencias: "[ADVERTENCIAS] "
