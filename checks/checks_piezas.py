@@ -18,6 +18,12 @@ _GRUPO_MATERIAL = "Material"
 _GRUPO_MEC = "Mecanizados"
 _GRUPO_TIRA = "Tiradores"
 
+
+def _norm_acabado(s: str) -> str:
+    """Normaliza acabados: lowercase y colapsa guiones/espacios.
+    'Marble-Green' == 'Marble Green' == 'marble  green' → 'marble green'."""
+    return re.sub(r"[\s\-]+", " ", s.strip().lower())
+
 # ---------------------------------------------------------------------------
 # C-10: Nº total de piezas igual en OT, DESPIECE y ETIQUETAS
 # ---------------------------------------------------------------------------
@@ -117,7 +123,7 @@ def check_material_consistente(
             inconsistencias.append(f"material {p.material}≠{e.material}")
         if p.gama and e.gama and p.gama != e.gama:
             inconsistencias.append(f"gama {p.gama}≠{e.gama}")
-        if p.acabado and e.acabado and p.acabado.lower() != e.acabado.lower():
+        if p.acabado and e.acabado and _norm_acabado(p.acabado) != _norm_acabado(e.acabado):
             inconsistencias.append(f"acabado '{p.acabado}'≠'{e.acabado}'")
         if inconsistencias:
             errores.append(f"{p.id}: {', '.join(inconsistencias)}")
@@ -153,15 +159,13 @@ def check_material_tablero(piezas: list[Pieza], reglas: dict) -> CheckResult:
 def check_acabados(piezas: list[Pieza], reglas: dict) -> CheckResult:
     """C-16: Acabado de cada pieza está en la lista validada de su gama. Bloquea: No."""
     acabados_gama: dict[str, list[str]] = reglas["acabados"]
-    # Normaliza guiones/espacios: 'Marble-green' == 'Marble Green' == 'marble  green'
-    norm = lambda s: re.sub(r"[\s\-]+", " ", s.strip().lower())
     errores = []
     for p in piezas:
         lista = acabados_gama.get(p.gama)
         if lista is None:
             continue  # gama desconocida → ya detectado por C-15
-        lista_norm = {norm(a) for a in lista}
-        if p.acabado and norm(p.acabado) not in lista_norm:
+        lista_norm = {_norm_acabado(a) for a in lista}
+        if p.acabado and _norm_acabado(p.acabado) not in lista_norm:
             errores.append(f"{p.id}: acabado '{p.acabado}' no validado para gama {p.gama}")
     return _resultado("C-16", "Acabados pertenecen a la lista validada de su gama",
                       errores, False, _GRUPO_MATERIAL)
