@@ -477,26 +477,38 @@ _RE_CAZTA_CON_NUM = re.compile(r"\d+\s*cazta\.?", re.IGNORECASE)
 
 
 def check_mec_torn_en_ancho_especial(piezas: list[Pieza]) -> CheckResult:
-    """C-19: Puertas P y cajones C con ancho 446 o 596 deben usar 'torn.',
-    nunca 'N cazta.' Bloquea: Sí.
+    """C-19: Puertas P y cajones C con ancho 446 o 596 deben usar 'torn.'.
+    - Mecanizado vacío → SKIP (frente sin mecanizar, válido en algunos proyectos)
+    - 'N cazta.' u otro mecanizado distinto de 'torn.' → WARN (no bloquea)
     """
     anchos_especiales = {446, 596}
-    errores: list[str] = []
+    warns: list[str] = []
+    sin_mecanizar: list[str] = []
     for p in piezas:
         if p.tipologia not in ("P", "C"):
             continue
         if p.ancho not in anchos_especiales:
             continue
         mec = p.mecanizado.strip()
-        if mec.lower() == "torn." or mec.lower() == "torn":
+        if mec.lower() in ("torn.", "torn"):
+            continue
+        if not mec:
+            sin_mecanizar.append(f"{p.id}: ancho={p.ancho} sin mecanizado declarado")
             continue
         if _RE_CAZTA_CON_NUM.search(mec):
-            errores.append(
+            warns.append(
                 f"{p.id}: ancho={p.ancho} con mecanizado '{mec}' — debe ser 'torn.'"
             )
         else:
-            errores.append(
+            warns.append(
                 f"{p.id}: ancho={p.ancho} con mecanizado '{mec}' (esperado 'torn.')"
             )
-    return _resultado("C-19", "Ancho 446/596 con mecanizado 'torn.'",
-                      errores, True, _GRUPO_MEC)
+
+    if warns:
+        return _resultado("C-19", "Ancho 446/596 con mecanizado 'torn.'",
+                          warns, False, _GRUPO_MEC, tipo_fail="WARN")
+    if sin_mecanizar:
+        return _skip("C-19", "Ancho 446/596 con mecanizado 'torn.'",
+                     "Frentes sin mecanizar — revisar: " + " | ".join(sin_mecanizar),
+                     _GRUPO_MEC)
+    return _pass("C-19", "Ancho 446/596 con mecanizado 'torn.'", True, _GRUPO_MEC)
