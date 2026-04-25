@@ -493,7 +493,7 @@ def check_mec_torn_en_ancho_especial(piezas: list[Pieza]) -> CheckResult:
         if mec.lower() in ("torn.", "torn"):
             continue
         if not mec:
-            sin_mecanizar.append(f"{p.id}: ancho={p.ancho} sin mecanizado declarado")
+            sin_mecanizar.append(f"{p.id}: ancho={p.ancho} sin mecanizado declarado en el Despiece")
             continue
         if _RE_CAZTA_CON_NUM.search(mec):
             warns.append(
