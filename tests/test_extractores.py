@@ -508,6 +508,13 @@ class TestLeerOT:
             ot = leer_ot(io.BytesIO(b"x"))
         assert ot.num_tiradores == 8
 
+    def test_extrae_tiradores_multi_material(self):
+        """PASS: '# Tiradores 8 6 12' (una columna por material) → suma 26."""
+        texto = "EU-22467\n# Tiradores 8 6 12\n"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.num_tiradores == 26
+
     def test_extrae_tableros(self):
         """PASS: línea 'PLY LAM Pale: 3' → tableros['PLY_LAM_Pale']=3."""
         texto = "EU-21822\nPLY LAM Pale: 3\nMDF LAC Blanco: 2"
