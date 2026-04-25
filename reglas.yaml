@@ -374,6 +374,7 @@ nomenclatura:
     dossier_fr: "CUBRO_Dossier_technique_du_projet_*"
     dossier_es: "CUBRO_Dossier_de_proyecto_*"
     dossier_corto: "CUBRO_DOSSIER_*"
+    technical_project: "CUBRO_TECHNICAL_PROJECT_*"
     extraccion: "EXTRACCION_*"
     informe:    "informe_*"
     packing_list_cliente: "PACKING LIST CLIENTE_*"
