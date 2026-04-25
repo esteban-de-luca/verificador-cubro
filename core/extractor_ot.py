@@ -151,12 +151,15 @@ def _float_limpio(texto: str) -> float:
         return 0.0
 
 
-def _limpiar_observaciones(bloque: str) -> list[str]:
-    """Divide un bloque de texto en líneas no vacías."""
+def _limpiar_observaciones(bloque: str, descartar: set[str] = frozenset()) -> list[str]:
+    """Divide un bloque de texto en líneas no vacías, descartando cabeceras
+    repetidas del documento (ID proyecto, cliente, 'ORDEN DE TRABAJO')."""
+    descartar_norm = {d.strip().lower() for d in descartar if d}
+    descartar_norm.add("orden de trabajo")
     return [
         linea.strip()
         for linea in bloque.strip().splitlines()
-        if linea.strip()
+        if linea.strip() and linea.strip().lower() not in descartar_norm
     ]
 
 
@@ -286,13 +289,20 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
     else:
         tiene_tensores = None
 
-    # Observaciones CNC
-    m_cnc = _RE_SEC_CNC.search(texto)
-    obs_cnc = _limpiar_observaciones(m_cnc.group(1)) if m_cnc else []
+    # Observaciones CNC y producción — descartar cabeceras repetidas en saltos de página.
+    # La cabecera del documento son las líneas previas a "ORDEN DE TRABAJO" (ID, cliente).
+    cabeceras = {id_proyecto, cliente}
+    m_ot_header = re.search(r"orden\s+de\s+trabajo", texto, re.IGNORECASE)
+    if m_ot_header:
+        cabeceras.update(
+            l.strip() for l in texto[:m_ot_header.start()].splitlines() if l.strip()
+        )
 
-    # Observaciones producción
+    m_cnc = _RE_SEC_CNC.search(texto)
+    obs_cnc = _limpiar_observaciones(m_cnc.group(1), cabeceras) if m_cnc else []
+
     m_prod = _RE_SEC_PRODUCCION.search(texto)
-    obs_prod = _limpiar_observaciones(m_prod.group(1)) if m_prod else []
+    obs_prod = _limpiar_observaciones(m_prod.group(1), cabeceras) if m_prod else []
 
     # IDs de piezas del Packing List (filas "EU-XXXXX  ID_PIEZA  ancho alto ...")
     ids_piezas = [m.group(1).upper() for m in _RE_PL_FILA.finditer(texto)]

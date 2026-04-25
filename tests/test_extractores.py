@@ -537,6 +537,23 @@ class TestLeerOT:
         assert "retal de PLY LAM Pale" in ot.observaciones_cnc
         assert "sin mecanizar" in ot.observaciones_cnc
 
+    def test_observaciones_cnc_descarta_cabeceras_pagina(self):
+        """OBSERVACIONES CNC vacía + salto de página: la cabecera repetida
+        (ID, cliente, ORDEN DE TRABAJO) se descarta y no contamina obs_cnc."""
+        texto = (
+            "EU-21731\n"
+            "Solenn Nunes\n"
+            "ORDEN DE TRABAJO\n"
+            "OBSERVACIONES CNC\n"
+            "EU-21731\n"
+            "Solenn Nunes\n"
+            "ORDEN DE TRABAJO\n"
+            "PACKING LIST\n"
+        )
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.observaciones_cnc == []
+
     def test_campos_vacios_si_pdf_no_tiene_datos(self):
         """FAIL semántico: PDF sin info → valores por defecto, no excepción."""
         texto = "Texto sin estructura reconocible"
