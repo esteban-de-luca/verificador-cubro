@@ -381,13 +381,15 @@ class TestLeerDXF:
         doc = leer_dxf(buf, nombre="EU21822_X_PLY_LAMINADO_PALE_T1.dxf")
         assert "CONTROL" in doc.layers_con_geometria
 
-    def test_layers_vacios_en_layers_no_en_con_geometria(self):
-        """PASS: layers sin entidades no están en layers_con_geometria."""
+    def test_layers_vacios_no_se_incluyen(self):
+        """PASS: layers declarados en la tabla LAYER del DXF pero sin
+        entidades quedan fuera de doc.layers (solo se cuentan los usados)."""
         from core.extractor_dxf import leer_dxf
         buf = self._bytesio_dxf(["CONTROL"], ["LAYER_VACIO"])
         doc = leer_dxf(buf, nombre="EU21822_X_PLY_LAMINADO_PALE_T1.dxf")
-        assert "LAYER_VACIO" in doc.layers
+        assert "LAYER_VACIO" not in doc.layers
         assert "LAYER_VACIO" not in doc.layers_con_geometria
+        assert "CONTROL" in doc.layers
 
     def test_extrae_material_del_nombre(self):
         """PASS: PLY/MDF extraídos del nombre del archivo."""
@@ -516,8 +518,15 @@ class TestLeerOT:
         assert ot.num_tiradores == 26
 
     def test_extrae_tableros(self):
-        """PASS: línea 'PLY LAM Pale: 3' → tableros['PLY_LAM_Pale']=3."""
-        texto = "EU-21822\nPLY LAM Pale: 3\nMDF LAC Blanco: 2"
+        """PASS: tabla INFORMACION DE CORTE columnar parseada correctamente."""
+        texto = (
+            "EU-21822\n"
+            "INFORMACION DE CORTE\n"
+            "Tablero base PLY MDF\n"
+            "Gama Laminado Laca\n"
+            "Acabado Pale Blanco\n"
+            "# Tableros 3 2\n"
+        )
         with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
             ot = leer_ot(io.BytesIO(b"x"))
         assert ot.tableros.get("PLY_LAM_Pale") == 3
