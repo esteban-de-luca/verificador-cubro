@@ -1,11 +1,11 @@
 """
-pages/2_Cola_Global.py — Verificación en lote de proyectos PENDIENTE.
+pages/2_Cola_Global.py — Verificación en lote de proyectos no aprobados.
 
-Escanea la semana más reciente de cada responsable, agrupa los proyectos
-PENDIENTE por responsable, permite seleccionarlos (individual o por grupo) y
-los verifica secuencialmente con barra de progreso. Al terminar, los resultados
-ocupan la zona principal ordenados por severidad y permiten aplicar el estado
-en Drive con un solo clic (incluida acción bulk para todos los APROBADOS).
+Escanea TODAS las semanas de cada responsable y muestra todos los proyectos
+que no estén en estado OK (PENDIENTE, ADVERTENCIAS, BLOQUEADO), agrupados
+por responsable en expanders. Permite seleccionarlos (individual o por grupo)
+y verificarlos secuencialmente con barra de progreso. Al terminar, los
+resultados ocupan la zona principal ordenados por severidad.
 """
 
 from __future__ import annotations
@@ -35,133 +35,191 @@ def _init_state() -> None:
     st.session_state.setdefault("cola_scope", {})
 
 
+def _chk_key(folder_id: str) -> str:
+    return f"chk_{folder_id}"
+
+
+def _set_seleccion(ids_a_marcar: set[str], pendientes_ids: set[str]) -> None:
+    """
+    Sincroniza la selección con el estado de los widgets checkbox.
+
+    `ids_a_marcar` es el conjunto de IDs que deben quedar marcados.
+    `pendientes_ids` es el universo de IDs que tienen checkbox renderizado
+    (necesario para desmarcar los que NO estén en `ids_a_marcar`).
+    """
+    st.session_state.cola_seleccion = set(ids_a_marcar)
+    for pid in pendientes_ids:
+        st.session_state[_chk_key(pid)] = (pid in ids_a_marcar)
+
+
 # ---------------------------------------------------------------------------
-# Carga de proyectos
+# Carga de proyectos no aprobados
 # ---------------------------------------------------------------------------
 
 @st.cache_data(ttl=120, show_spinner=False)
-def _cargar_proyectos_pendientes(_servicio_ref) -> list[dict]:
-    """Proyectos de la semana más reciente de cada responsable."""
+def _cargar_proyectos_no_aprobados(_servicio_ref) -> list[dict]:
+    """
+    Recorre TODAS las semanas de cada responsable y devuelve los proyectos
+    que no estén en estado OK. Estados incluidos: PENDIENTE, ADVERTENCIAS,
+    BLOQUEADO.
+    """
     proyectos: list[dict] = []
     for responsable in config.RESPONSABLES:
-        semanas = listar_semanas(_servicio_ref, responsable)
-        if not semanas:
-            continue
-        semana = semanas[0]
-        for p in listar_proyectos(_servicio_ref, semana["id"]):
-            proyectos.append({
-                **p,
-                "responsable": responsable,
-                "semana_name": semana["name"],
-                "semana_id": semana["id"],
-                "semana_numero": semana["numero"],
-                "id_proyecto": _extraer_id_proyecto(p["nombre_limpio"]),
-            })
+        for semana in listar_semanas(_servicio_ref, responsable):
+            for p in listar_proyectos(_servicio_ref, semana["id"]):
+                if p["estado"] == "OK":
+                    continue
+                proyectos.append({
+                    **p,
+                    "responsable": responsable,
+                    "semana_name": semana["name"],
+                    "semana_id": semana["id"],
+                    "semana_numero": semana["numero"],
+                    "id_proyecto": _extraer_id_proyecto(p["nombre_limpio"]),
+                })
     return proyectos
 
 
 # ---------------------------------------------------------------------------
-# ZONA 1 — Cola de selección agrupada por responsable
+# Callback de sincronización checkbox → cola_seleccion
 # ---------------------------------------------------------------------------
 
-def _render_grupo_responsable(responsable: str, proyectos: list[dict], atrasado: bool) -> None:
-    """Renderiza una tarjeta con los pendientes de un responsable."""
-    semana_lbl = proyectos[0]["semana_name"]
-    warn = " · ⚠ semana atrasada" if atrasado else ""
-
-    with st.container(border=True):
-        col_h1, col_h2 = st.columns([4, 1.3])
-        col_h1.markdown(
-            f"**{responsable}**  ·  {len(proyectos)} pendiente"
-            f"{'s' if len(proyectos) != 1 else ''}  ·  {semana_lbl}{warn}"
-        )
-        if col_h2.button(
-            f"Seleccionar todo de {responsable}",
-            key=f"sel_grupo_{responsable}",
-            use_container_width=True,
-        ):
-            for p in proyectos:
-                st.session_state.cola_seleccion.add(p["id"])
-            st.rerun()
-
-        for p in proyectos:
-            col_chk, col_id, col_nom, col_link = st.columns([0.35, 1.1, 3, 0.7])
-            checked = col_chk.checkbox(
-                "",
-                value=p["id"] in st.session_state.cola_seleccion,
-                key=f"chk_{p['id']}",
-                label_visibility="collapsed",
-            )
-            if checked:
-                st.session_state.cola_seleccion.add(p["id"])
-            else:
-                st.session_state.cola_seleccion.discard(p["id"])
-            col_id.markdown(f"`{p['id_proyecto']}`")
-            col_nom.markdown(p["nombre_limpio"])
-            col_link.markdown(f"[↗ Drive]({_url_drive(p['id'])})")
+def _on_check_change(pid: str) -> None:
+    if st.session_state.get(_chk_key(pid), False):
+        st.session_state.cola_seleccion.add(pid)
+    else:
+        st.session_state.cola_seleccion.discard(pid)
 
 
-def _render_ya_verificados(ya_verificados: list[dict]) -> None:
+# ---------------------------------------------------------------------------
+# ZONA 1 — Cola agrupada por responsable
+# ---------------------------------------------------------------------------
+
+_ORDEN_ESTADOS = ("PENDIENTE", "ADVERTENCIAS", "BLOQUEADO")
+
+
+def _resumen_estados(proyectos: list[dict]) -> str:
     conteo: dict[str, int] = {}
-    for p in ya_verificados:
+    for p in proyectos:
         conteo[p["estado"]] = conteo.get(p["estado"], 0) + 1
     partes = []
-    for est in ("OK", "ADVERTENCIAS", "BLOQUEADO"):
+    for est in _ORDEN_ESTADOS:
         if est in conteo:
-            partes.append(f"{_ICONO.get(est, '')} {conteo[est]} {est}")
-    resumen = "  ·  ".join(partes) if partes else ""
+            partes.append(f"{conteo[est]} {est}")
+    return "  ·  ".join(partes)
 
-    with st.expander(
-        f"Ver {len(ya_verificados)} ya verificados esta semana  —  {resumen}",
-        expanded=False,
-    ):
-        for p in ya_verificados:
-            c1, c2, c3, c4 = st.columns([1, 3, 1.5, 1.2])
-            c1.markdown(f"`{_extraer_id_proyecto(p['nombre_limpio'])}`")
-            c2.markdown(f"[{p['nombre_limpio']}]({_url_drive(p['id'])})")
-            c3.markdown(f"{p['responsable']} · {p['semana_name']}")
+
+def _render_grupo_responsable(responsable: str, proyectos: list[dict]) -> None:
+    """Expander con los proyectos no aprobados de un responsable."""
+    n = len(proyectos)
+    seleccionados_grupo = sum(
+        1 for p in proyectos if p["id"] in st.session_state.cola_seleccion
+    )
+    label = (
+        f"{responsable}  ·  {n} proyecto{'s' if n != 1 else ''}  —  "
+        f"{_resumen_estados(proyectos)}"
+    )
+    if seleccionados_grupo:
+        label += f"  ·  ☑ {seleccionados_grupo}"
+
+    with st.expander(label, expanded=True):
+        # Botones de selección por grupo
+        col_sel, col_des = st.columns([1, 1])
+        with col_sel:
+            if st.button(
+                f"Seleccionar todo de {responsable}",
+                key=f"sel_grupo_{responsable}",
+                use_container_width=True,
+            ):
+                ids_grupo = {p["id"] for p in proyectos}
+                nueva = st.session_state.cola_seleccion | ids_grupo
+                # Sincroniza solo los chk de este grupo a True
+                for pid in ids_grupo:
+                    st.session_state[_chk_key(pid)] = True
+                st.session_state.cola_seleccion = nueva
+                st.rerun()
+        with col_des:
+            if st.button(
+                f"Deseleccionar grupo",
+                key=f"des_grupo_{responsable}",
+                use_container_width=True,
+                disabled=(seleccionados_grupo == 0),
+            ):
+                ids_grupo = {p["id"] for p in proyectos}
+                for pid in ids_grupo:
+                    st.session_state[_chk_key(pid)] = False
+                st.session_state.cola_seleccion -= ids_grupo
+                st.rerun()
+
+        # Cabecera de columnas
+        h = st.columns([0.35, 1.1, 3, 0.9, 1.2, 0.7])
+        h[0].markdown("&nbsp;", unsafe_allow_html=True)
+        h[1].markdown("**ID**")
+        h[2].markdown("**Nombre**")
+        h[3].markdown("**Semana**")
+        h[4].markdown("**Estado**")
+        h[5].markdown("**Drive**")
+
+        for p in proyectos:
+            col_chk, col_id, col_nom, col_sem, col_est, col_link = st.columns(
+                [0.35, 1.1, 3, 0.9, 1.2, 0.7]
+            )
+
+            chk_key = _chk_key(p["id"])
+            # Inicializa el widget state SOLO la primera vez (no en cada rerun
+            # — si no, sobrescribiríamos las acciones del usuario)
+            if chk_key not in st.session_state:
+                st.session_state[chk_key] = p["id"] in st.session_state.cola_seleccion
+
+            col_chk.checkbox(
+                "",
+                key=chk_key,
+                on_change=_on_check_change,
+                args=(p["id"],),
+                label_visibility="collapsed",
+            )
+            col_id.markdown(f"`{p['id_proyecto']}`")
+            col_nom.markdown(p["nombre_limpio"])
+            col_sem.markdown(p["semana_name"])
+
             color = _COLOR.get(p["estado"], _COLOR["PENDIENTE"])
             icono = _ICONO.get(p["estado"], "⚪")
-            c4.markdown(
+            col_est.markdown(
                 f'<span style="color:{color};font-weight:600;">{icono} {p["estado"]}</span>',
                 unsafe_allow_html=True,
             )
+            col_link.markdown(f"[↗ Drive]({_url_drive(p['id'])})")
 
 
 def _render_zona_cola(todos: list[dict]) -> bool:
-    """
-    Renderiza cabecera, controles y tarjetas por responsable.
-    Devuelve True si el usuario ha pulsado el botón de Verificar.
-    """
-    pendientes = [p for p in todos if p["estado"] == "PENDIENTE"]
-    ya_verificados = [p for p in todos if p["estado"] != "PENDIENTE"]
+    """Devuelve True si el usuario ha pulsado Verificar."""
+    n_total = len(todos)
+    todos_ids = {p["id"] for p in todos}
+    n_responsables = len({p["responsable"] for p in todos})
+    n_sel = sum(1 for p in todos if p["id"] in st.session_state.cola_seleccion)
 
-    n_pendientes = len(pendientes)
-    n_responsables = len({p["responsable"] for p in pendientes})
-    seleccion = st.session_state.cola_seleccion
-    n_sel = sum(1 for p in pendientes if p["id"] in seleccion)
-
-    # ── Cabecera con métricas y refresco ────────────────────────────────────
+    # ── Cabecera ───────────────────────────────────────────────────────────
     col_info, col_refresh = st.columns([4, 1])
     col_info.markdown(
-        f"### {n_pendientes} pendiente{'s' if n_pendientes != 1 else ''}  ·  "
+        f"### {n_total} proyecto{'s' if n_total != 1 else ''} no aprobado"
+        f"{'s' if n_total != 1 else ''}  ·  "
         f"{n_responsables} responsable{'s' if n_responsables != 1 else ''}"
     )
     if col_refresh.button("↺ Actualizar", use_container_width=True, key="btn_refresh"):
-        _cargar_proyectos_pendientes.clear()
+        _cargar_proyectos_no_aprobados.clear()
         st.rerun()
 
-    # ── Controles de selección + botón Verificar ───────────────────────────
+    # ── Controles globales + botón Verificar ───────────────────────────────
     col_all, col_none, col_cnt, col_go = st.columns([1, 1, 1.4, 2.2])
     with col_all:
         if st.button("Todos", use_container_width=True, key="btn_todos",
-                     disabled=(n_pendientes == 0)):
-            st.session_state.cola_seleccion = {p["id"] for p in pendientes}
+                     disabled=(n_total == 0)):
+            _set_seleccion(todos_ids, todos_ids)
             st.rerun()
     with col_none:
         if st.button("Ninguno", use_container_width=True, key="btn_ninguno",
                      disabled=(n_sel == 0)):
-            st.session_state.cola_seleccion.clear()
+            _set_seleccion(set(), todos_ids)
             st.rerun()
     with col_cnt:
         st.markdown(
@@ -180,31 +238,24 @@ def _render_zona_cola(todos: list[dict]) -> bool:
 
     st.markdown("---")
 
-    if not pendientes and not ya_verificados:
-        st.success("¡No hay proyectos pendientes! Todo verificado.")
+    if not todos:
+        st.success("¡No hay proyectos por verificar! Todo aprobado.")
         return False
 
-    if not pendientes:
-        st.success("¡No hay pendientes esta semana! Todo verificado.")
-
-    # ── Tarjetas por responsable ───────────────────────────────────────────
+    # ── Agrupar por responsable y renderizar ───────────────────────────────
     por_responsable: dict[str, list[dict]] = {}
-    for p in pendientes:
+    for p in todos:
         por_responsable.setdefault(p["responsable"], []).append(p)
 
-    max_semana = max((p["semana_numero"] for p in todos), default=0)
+    # Dentro de cada grupo, ordena por semana descendente y luego por nombre
+    for ps in por_responsable.values():
+        ps.sort(key=lambda p: (-p["semana_numero"], p["nombre_limpio"].lower()))
 
-    # Respeta el orden de config.RESPONSABLES
     for responsable in config.RESPONSABLES:
         ps = por_responsable.get(responsable)
         if not ps:
             continue
-        atrasado = ps[0]["semana_numero"] < max_semana
-        _render_grupo_responsable(responsable, ps, atrasado)
-
-    # ── Ya verificados (colapsado) ─────────────────────────────────────────
-    if ya_verificados:
-        _render_ya_verificados(ya_verificados)
+        _render_grupo_responsable(responsable, ps)
 
     return verify_clicked
 
@@ -250,6 +301,12 @@ def _verificar_cola(seleccionados: list[dict]) -> None:
 
     barra.progress(1.0, text="✓ Completado")
     contenedor_estado.empty()
+
+    # Limpia selección y los chk_* widgets para que la próxima carga arranque
+    # con todos desmarcados.
+    ids_verificados = {p["id"] for p in seleccionados}
+    for pid in ids_verificados:
+        st.session_state.pop(_chk_key(pid), None)
     st.session_state.cola_seleccion.clear()
     st.rerun()
 
@@ -263,12 +320,11 @@ _SEVERIDAD = {"BLOQUEADO": 0, "ADVERTENCIAS": 1, "APROBADO": 2}
 
 def _orden_severidad(r: dict) -> int:
     if r["error"]:
-        return -1  # errores de sistema arriba del todo
+        return -1
     return _SEVERIDAD.get(r["informe"].estado_global, 99)
 
 
 def _aplicar_estado_a_drive(r: dict, estado: str) -> None:
-    """Aplica el prefijo de estado en Drive y actualiza el dict local."""
     proyecto = r["proyecto"]
     estado_clave = _ESTADO_A_CLAVE.get(estado, "bloqueado")
     aplicar_prefijo_estado(
@@ -353,7 +409,7 @@ def _render_resultado(r: dict) -> None:
                         try:
                             _aplicar_estado_a_drive(r, estado)
                             st.toast(f"✓ {nombre}: [{estado}] aplicado")
-                            _cargar_proyectos_pendientes.clear()
+                            _cargar_proyectos_no_aprobados.clear()
                         except Exception as exc:
                             st.error(str(exc))
                     st.rerun()
@@ -395,7 +451,6 @@ def _render_zona_resultados(resultados: list[dict]) -> None:
     c3.metric("🟢 Aprobados", conteo["APROBADO"])
     c4.metric("💥 Errores", conteo["ERROR"])
 
-    # Bulk apply approved
     aprobados_pendientes = [
         r for r in resultados
         if not r["error"]
@@ -418,7 +473,7 @@ def _render_zona_resultados(resultados: list[dict]) -> None:
                             _aplicar_estado_a_drive(r, "APROBADO")
                         except Exception as exc:
                             fallos.append(f"{r['proyecto']['nombre_limpio']}: {exc}")
-                _cargar_proyectos_pendientes.clear()
+                _cargar_proyectos_no_aprobados.clear()
                 if fallos:
                     for f in fallos:
                         st.error(f)
@@ -432,7 +487,6 @@ def _render_zona_resultados(resultados: list[dict]) -> None:
 
     st.markdown("---")
 
-    # Ordenados por severidad
     for r in sorted(resultados, key=_orden_severidad):
         _render_resultado(r)
 
@@ -454,13 +508,12 @@ def main() -> None:
 
     st.title("📋 Ficheros pendientes")
 
-    # ── Si hay resultados, ocupan la zona principal ────────────────────────
     if st.session_state.cola_resultados:
         _render_zona_resultados(st.session_state.cola_resultados)
         st.markdown("---")
         with st.expander("➕ Verificar más proyectos", expanded=False):
             try:
-                todos = _cargar_proyectos_pendientes(get_servicio())
+                todos = _cargar_proyectos_no_aprobados(get_servicio())
             except Exception as exc:
                 st.error(f"Error al conectar con Drive: {exc}")
                 return
@@ -468,21 +521,19 @@ def main() -> None:
                 seleccionados = [
                     p for p in todos
                     if p["id"] in st.session_state.cola_seleccion
-                    and p["estado"] == "PENDIENTE"
                 ]
                 if seleccionados:
                     _verificar_cola(seleccionados)
         return
 
-    # ── Cola normal ────────────────────────────────────────────────────────
     st.caption(
-        "Proyectos PENDIENTE de la semana más reciente de cada responsable. "
-        "Selecciónalos individualmente o por grupo y pulsa Verificar."
+        "Todos los proyectos no aprobados (PENDIENTE, ADVERTENCIAS, BLOQUEADO) "
+        "agrupados por responsable. Selecciónalos y pulsa Verificar."
     )
 
-    with st.spinner("Escaneando semanas recientes…"):
+    with st.spinner("Escaneando todas las semanas…"):
         try:
-            todos = _cargar_proyectos_pendientes(get_servicio())
+            todos = _cargar_proyectos_no_aprobados(get_servicio())
         except Exception as exc:
             st.error(f"Error al conectar con Drive: {exc}")
             return
@@ -491,7 +542,6 @@ def main() -> None:
         seleccionados = [
             p for p in todos
             if p["id"] in st.session_state.cola_seleccion
-            and p["estado"] == "PENDIENTE"
         ]
         if seleccionados:
             _verificar_cola(seleccionados)
