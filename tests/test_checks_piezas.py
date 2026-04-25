@@ -519,24 +519,43 @@ class TestC19:
                         mecanizado="Torn.")]
         assert check_mec_torn_en_ancho_especial(piezas).resultado == "PASS"
 
-    def test_fail_446_con_cazta(self):
+    def test_warn_446_con_cazta(self):
         piezas = [Pieza("M1-C1", 446, 398, "PLY", "LAM", "Pale", "C",
                         mecanizado="3 cazta.")]
         res = check_mec_torn_en_ancho_especial(piezas)
-        assert res.resultado == "FAIL"
+        assert res.resultado == "WARN"
+        assert not res.bloquea
         assert "446" in res.detalle
 
-    def test_fail_596_con_Cazta_mayuscula(self):
+    def test_warn_596_con_Cazta_mayuscula(self):
         piezas = [Pieza("M1-P1", 596, 398, "PLY", "LAM", "Pale", "P",
                         mecanizado="2 Cazta.")]
         res = check_mec_torn_en_ancho_especial(piezas)
-        assert res.resultado == "FAIL"
+        assert res.resultado == "WARN"
 
-    def test_fail_puerta_596_mec_vacio(self):
+    def test_skip_puerta_596_mec_vacio(self):
+        # Frente sin mecanizar — válido en algunos proyectos, se revisa manualmente
         piezas = [Pieza("M1-P1", 596, 398, "PLY", "LAM", "Pale", "P",
                         mecanizado="")]
         res = check_mec_torn_en_ancho_especial(piezas)
-        assert res.resultado == "FAIL"
+        assert res.resultado == "SKIP"
+        assert "M1-P1" in res.detalle
+
+    def test_warn_otro_mecanizado_distinto(self):
+        # Mecanizado distinto a torn./cazta./vacío también es WARN
+        piezas = [Pieza("M1-P1", 596, 398, "PLY", "LAM", "Pale", "P",
+                        mecanizado="vent.")]
+        res = check_mec_torn_en_ancho_especial(piezas)
+        assert res.resultado == "WARN"
+
+    def test_warn_predomina_sobre_skip(self):
+        # Si hay mezcla de cazta. (warn) y vacío (skip), gana WARN
+        piezas = [
+            Pieza("M1-P1", 596, 398, "PLY", "LAM", "Pale", "P", mecanizado=""),
+            Pieza("M2-P1", 596, 398, "PLY", "LAM", "Pale", "P", mecanizado="2 cazta."),
+        ]
+        res = check_mec_torn_en_ancho_especial(piezas)
+        assert res.resultado == "WARN"
 
     def test_no_aplica_balda(self):
         # Tipología B no entra aunque tenga ancho 446
