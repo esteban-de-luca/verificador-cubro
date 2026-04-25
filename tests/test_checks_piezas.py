@@ -194,6 +194,11 @@ class TestC16:
         piezas = [Pieza("M1-P1", 400, 798, "MDF", "LAC", "Blanco", "P")]
         assert check_acabados(piezas, r).resultado == "PASS"
 
+    def test_pass_normaliza_guion_vs_espacio(self, r):
+        # Reglas declaran 'Marble Green'; despiece trae 'Marble-green'
+        piezas = [_p(mat="PLY", gama="LAM", acabado="Marble-green")]
+        assert check_acabados(piezas, r).resultado == "PASS"
+
 
 # ===========================================================================
 # C-17
