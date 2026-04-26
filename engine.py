@@ -43,7 +43,8 @@ from checks.checks_piezas import (
     check_acabados,
     check_sufijo_tipologia,
     check_apertura_puertas,
-    check_apertura_pax_con_tirador,
+    check_apertura_pax,
+    check_pax_mecanizado,
     check_sin_apertura_cajones,
     check_tirador_completo,
     check_posicion_sin_tirador,
@@ -265,7 +266,8 @@ def _ejecutar_checks(
     resultados.append(check_acabados(datos.piezas, reglas))
     resultados.append(check_sufijo_tipologia(datos.piezas, reglas))
     resultados.append(check_apertura_puertas(datos.piezas, reglas))
-    resultados.append(check_apertura_pax_con_tirador(datos.piezas, reglas))
+    resultados.append(check_apertura_pax(datos.piezas, reglas))
+    resultados.append(check_pax_mecanizado(datos.piezas))
     resultados.append(check_sin_apertura_cajones(datos.piezas, reglas))
     resultados.append(check_tirador_completo(datos.piezas))
     resultados.append(check_posicion_sin_tirador(datos.piezas))

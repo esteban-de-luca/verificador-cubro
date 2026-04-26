@@ -207,33 +207,50 @@ def check_sufijo_tipologia(piezas: list[Pieza], reglas: dict) -> CheckResult:
 
 
 # ---------------------------------------------------------------------------
-# C-20: Puertas P (METOD) siempre con apertura I/D
+# C-20: Puertas P con apertura coherente con mecanizado
 # ---------------------------------------------------------------------------
 
 def check_apertura_puertas(piezas: list[Pieza], reglas: dict) -> CheckResult:
-    """C-20: Toda puerta P tiene apertura I o D definida. Bloquea: Sí."""
+    """C-20: Coherencia apertura-mecanizado en puertas P. Bloquea: Sí.
+
+    - P con cazta. (puerta normal con bisagras) → apertura I/D obligatoria.
+    - P con torn. (frente de cajón sin bisagras)  → apertura I/D PROHIBIDA.
+    - P sin mecanizado declarado → apertura obligatoria por defecto
+      (otro check captura el mecanizado faltante si aplica).
+    """
     tipologias_obligatoria: list[str] = reglas["tipologias"]["apertura_obligatoria"]
+    errores: list[str] = []
+    for p in piezas:
+        if p.tipologia not in tipologias_obligatoria:
+            continue
+        es_torn = "torn." in p.mecanizado.lower()
+        if es_torn and p.tiene_apertura:
+            errores.append(
+                f"{p.id}: P con torn. (frente de cajón) no debe tener "
+                f"apertura I/D (tiene: '{p.apertura}')"
+            )
+        elif not es_torn and not p.tiene_apertura:
+            errores.append(f"{p.id}: tipología {p.tipologia} sin apertura")
+    return _resultado(
+        "C-20", "Puertas P con apertura coherente con mecanizado",
+        errores, True, _GRUPO_MEC,
+    )
+
+
+# ---------------------------------------------------------------------------
+# C-21: Puertas X (PAX) siempre con apertura I/D
+# ---------------------------------------------------------------------------
+
+def check_apertura_pax(piezas: list[Pieza], reglas: dict) -> CheckResult:
+    """C-21: Toda puerta X (PAX) debe tener apertura I/D, con o sin tirador.
+    Bloquea: Sí.
+    """
     errores = [
         f"{p.id}: tipología {p.tipologia} sin apertura"
         for p in piezas
-        if p.tipologia in tipologias_obligatoria and not p.tiene_apertura
+        if p.tipologia == "X" and not p.tiene_apertura
     ]
-    return _resultado("C-20", "Puertas P siempre con apertura I/D", errores, True, _GRUPO_MEC)
-
-
-# ---------------------------------------------------------------------------
-# C-21: Puertas X (PAX) con tirador → apertura obligatoria
-# ---------------------------------------------------------------------------
-
-def check_apertura_pax_con_tirador(piezas: list[Pieza], reglas: dict) -> CheckResult:
-    """C-21: Puerta X con tirador debe tener apertura. Bloquea: Sí."""
-    tipologias: list[str] = reglas["tipologias"]["apertura_si_tirador"]
-    errores = [
-        f"{p.id}: tipo {p.tipologia} con tirador pero sin apertura"
-        for p in piezas
-        if p.tipologia in tipologias and p.tiene_tirador and not p.tiene_apertura
-    ]
-    return _resultado("C-21", "Puertas X con tirador tienen apertura I/D",
+    return _resultado("C-21", "Puertas X siempre con apertura I/D",
                       errores, True, _GRUPO_MEC)
 
 
@@ -512,3 +529,25 @@ def check_mec_torn_en_ancho_especial(piezas: list[Pieza]) -> CheckResult:
                      "Frentes sin mecanizar — revisar: " + " | ".join(sin_mecanizar),
                      _GRUPO_MEC)
     return _pass("C-19", "Ancho 446/596 con mecanizado 'torn.'", True, _GRUPO_MEC)
+
+
+# ---------------------------------------------------------------------------
+# C-32: Puertas X (PAX) siempre con cazta. (nunca torn.)
+# ---------------------------------------------------------------------------
+
+def check_pax_mecanizado(piezas: list[Pieza]) -> CheckResult:
+    """C-32: Las puertas X (PAX) siempre llevan bisagras (cazta.) y nunca
+    tornillos (torn.). Si una X tiene mecanizado torn., es un error de
+    clasificación: o bien la tipología debe ser C/P, o bien el mecanizado
+    está mal declarado. Bloquea: Sí.
+    """
+    errores = [
+        f"{p.id}: X con mecanizado '{p.mecanizado}' — PAX nunca lleva torn., "
+        f"siempre cazta."
+        for p in piezas
+        if p.tipologia == "X" and "torn." in p.mecanizado.lower()
+    ]
+    return _resultado(
+        "C-32", "Puertas X siempre con cazta. (nunca torn.)",
+        errores, True, _GRUPO_MEC,
+    )

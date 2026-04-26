@@ -15,7 +15,7 @@ from checks.checks_piezas import (
     check_num_piezas, check_ids_despiece_en_etiquetas, check_ids_despiece_en_ot,
     check_dimensiones, check_material_consistente, check_material_tablero,
     check_acabados, check_sufijo_tipologia, check_apertura_puertas,
-    check_apertura_pax_con_tirador, check_sin_apertura_cajones,
+    check_apertura_pax, check_pax_mecanizado, check_sin_apertura_cajones,
     check_tirador_completo, check_posicion_sin_tirador, check_cazoletas,
     check_baldas_dimensiones, check_cajones_dimensiones,
     check_mec_torn_en_ancho_especial, check_mecanizado_rodapies,
@@ -234,46 +234,123 @@ class TestC17:
 
 
 # ===========================================================================
-# C-20
+# C-20: P con apertura coherente con mecanizado
 # ===========================================================================
 class TestC20:
-    def test_pass_puerta_con_apertura(self, r):
-        piezas = [_p("M1-P1", tip="P", apertura="D")]
+    def test_pass_puerta_cazta_con_apertura(self, r):
+        # Caso 1: P + cazta. + apertura → PASS (puerta normal con bisagras)
+        piezas = [Pieza("M1-P1", 400, 798, "PLY", "LAM", "Pale", "P",
+                        mecanizado="cazta.", apertura="D")]
         assert check_apertura_puertas(piezas, r).resultado == "PASS"
 
-    def test_fail_puerta_sin_apertura(self, r):
+    def test_fail_puerta_cazta_sin_apertura(self, r):
+        # Caso 2: P + cazta. + sin apertura → FAIL
         piezas = [Pieza("M1-P1", 400, 798, "PLY", "LAM", "Pale", "P",
-                        apertura="")]
+                        mecanizado="cazta.", apertura="")]
         res = check_apertura_puertas(piezas, r)
         assert res.resultado == "FAIL" and res.bloquea
+        assert "sin apertura" in res.detalle
 
-    def test_cajon_no_requiere_apertura(self, r):
+    def test_pass_puerta_torn_sin_apertura(self, r):
+        # Caso 3 (regresión M7-P1): P + torn. + sin apertura → PASS
+        # Frente de cajón sin bisagras, no aplica apertura.
+        piezas = [Pieza("M7-P1", 596, 798, "PLY", "LAM", "Fes", "P",
+                        mecanizado="torn.", tirador="Plantea",
+                        posicion_tirador="1", color_tirador="INOX",
+                        apertura="")]
+        assert check_apertura_puertas(piezas, r).resultado == "PASS"
+
+    def test_fail_puerta_torn_con_apertura(self, r):
+        # Caso 4: P + torn. + apertura → FAIL (apertura PROHIBIDA)
+        piezas = [Pieza("M1-P1", 596, 798, "PLY", "LAM", "Pale", "P",
+                        mecanizado="torn.", apertura="I")]
+        res = check_apertura_puertas(piezas, r)
+        assert res.resultado == "FAIL" and res.bloquea
+        assert "no debe tener apertura" in res.detalle
+
+    def test_pass_puerta_sin_mec_con_apertura(self, r):
+        # Caso 5: P + mec vacío + apertura → PASS
+        piezas = [Pieza("M1-P1", 400, 798, "PLY", "LAM", "Pale", "P",
+                        mecanizado="", apertura="D")]
+        assert check_apertura_puertas(piezas, r).resultado == "PASS"
+
+    def test_fail_puerta_sin_mec_sin_apertura(self, r):
+        # Caso 6: P + mec vacío + sin apertura → FAIL
+        piezas = [Pieza("M1-P1", 400, 798, "PLY", "LAM", "Pale", "P",
+                        mecanizado="", apertura="")]
+        res = check_apertura_puertas(piezas, r)
+        assert res.resultado == "FAIL"
+
+    def test_cajon_no_aplica_a_c20(self, r):
+        # C-20 solo aplica a P (no a C)
         piezas = [Pieza("M1-C1", 400, 200, "PLY", "LAM", "Pale", "C",
                         mecanizado="torn.", apertura="")]
         assert check_apertura_puertas(piezas, r).resultado == "PASS"
 
 
 # ===========================================================================
-# C-21
+# C-21: X siempre con apertura I/D (con o sin tirador)
 # ===========================================================================
 class TestC21:
     def test_pass_pax_con_tirador_y_apertura(self, r):
+        # Caso 7: X con tirador y apertura → PASS
         piezas = [Pieza("M1-X1", 400, 798, "PLY", "LAM", "Pale", "X",
                         mecanizado="cazta.", tirador="Round", posicion_tirador="3",
                         color_tirador="Cerezo", apertura="D")]
-        assert check_apertura_pax_con_tirador(piezas, r).resultado == "PASS"
+        assert check_apertura_pax(piezas, r).resultado == "PASS"
 
-    def test_fail_pax_tirador_sin_apertura(self, r):
+    def test_fail_pax_con_tirador_sin_apertura(self, r):
+        # Caso 8: X con tirador sin apertura → FAIL
         piezas = [Pieza("M1-X1", 400, 798, "PLY", "LAM", "Pale", "X",
                         mecanizado="cazta.", tirador="Round", posicion_tirador="3",
                         color_tirador="Cerezo", apertura="")]
-        res = check_apertura_pax_con_tirador(piezas, r)
-        assert res.resultado == "FAIL"
+        res = check_apertura_pax(piezas, r)
+        assert res.resultado == "FAIL" and res.bloquea
 
-    def test_pass_pax_sin_tirador_sin_apertura(self, r):
+    def test_fail_pax_sin_tirador_sin_apertura(self, r):
+        # Caso 9 (cambio): X sin tirador y sin apertura → FAIL (antes PASS)
+        # Toda X requiere apertura siempre.
         piezas = [Pieza("M1-X1", 400, 798, "PLY", "LAM", "Pale", "X",
                         mecanizado="cazta.", apertura="")]
-        assert check_apertura_pax_con_tirador(piezas, r).resultado == "PASS"
+        res = check_apertura_pax(piezas, r)
+        assert res.resultado == "FAIL"
+
+    def test_pass_pax_sin_tirador_con_apertura(self, r):
+        # X sin tirador pero con apertura → PASS
+        piezas = [Pieza("M1-X1", 400, 798, "PLY", "LAM", "Pale", "X",
+                        mecanizado="cazta.", apertura="I")]
+        assert check_apertura_pax(piezas, r).resultado == "PASS"
+
+
+# ===========================================================================
+# C-32: X siempre con cazta. (nunca torn.)
+# ===========================================================================
+class TestC32:
+    def test_pass_pax_con_cazta(self):
+        piezas = [Pieza("M1-X1", 400, 798, "PLY", "LAM", "Pale", "X",
+                        mecanizado="cazta.", apertura="D")]
+        assert check_pax_mecanizado(piezas).resultado == "PASS"
+
+    def test_fail_pax_con_torn(self):
+        # Caso 10: X con torn. → FAIL (PAX nunca lleva tornillos)
+        piezas = [Pieza("M1-X1", 400, 798, "PLY", "LAM", "Pale", "X",
+                        mecanizado="torn.", apertura="D")]
+        res = check_pax_mecanizado(piezas)
+        assert res.resultado == "FAIL" and res.bloquea
+        assert "torn." in res.detalle
+
+    def test_pass_p_con_torn_no_aplica_a_c32(self):
+        # C-32 solo aplica a X. P con torn. (frente de cajón) no entra aquí.
+        piezas = [Pieza("M7-P1", 596, 798, "PLY", "LAM", "Pale", "P",
+                        mecanizado="torn.", apertura="")]
+        assert check_pax_mecanizado(piezas).resultado == "PASS"
+
+    def test_pass_pax_sin_mecanizado(self):
+        # X sin mecanizado declarado → PASS (no es torn., el check específico
+        # de cazta. lo capturará otro check si aplica).
+        piezas = [Pieza("M1-X1", 400, 798, "PLY", "LAM", "Pale", "X",
+                        mecanizado="", apertura="D")]
+        assert check_pax_mecanizado(piezas).resultado == "PASS"
 
 
 # ===========================================================================

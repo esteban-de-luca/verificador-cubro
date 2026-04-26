@@ -321,12 +321,14 @@ tipologias:
     T: [T, TBE]     # M1-T1, M1-TBE1
 
   # C-20: tipologías que SIEMPRE deben tener apertura I/D
+  # (P está aquí; X se valida en C-21 con su propio check específico)
   apertura_obligatoria:
     - P
 
-  # C-21: tipologías que llevan apertura solo si tienen tirador
-  apertura_si_tirador:
-    - X
+  # OBSOLETO: antes X solo requería apertura si tenía tirador. Ahora todas
+  # las X requieren apertura (validado por C-21 directamente). Se mantiene
+  # la clave vacía para no romper el schema validator.
+  apertura_si_tirador: []
 
   # C-22: tipologías que NUNCA deben tener apertura I/D
   apertura_nunca:
