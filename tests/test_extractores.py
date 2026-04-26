@@ -558,6 +558,103 @@ class TestLeerDXFContornosPieza:
         assert anchuras[0] == pytest.approx(476.0)
         assert anchuras[1] == pytest.approx(2350.0)
 
+    def test_circulo_extrusion_negativa_aplica_arbitrary_axis(self):
+        """PASS: CIRCLE con extrusion=(0,0,-1) → coordenada X invertida (X→-X)
+        en el sistema WCS. CUBRO usa esto para piezas de la cara trasera."""
+        from core.extractor_dxf import leer_dxf
+        doc = ezdxf.new(dxfversion="R2010")
+        msp = doc.modelspace()
+        if "7-POCKET-EM5-Z14" not in doc.layers:
+            doc.layers.add("7-POCKET-EM5-Z14")
+        # Cazoleta dibujada en OCS a X=869.5 con extrusion Z=-1
+        # → posición física en WCS: X = -869.5
+        msp.add_circle(
+            (869.5, -9377.0), radius=17.5,
+            dxfattribs={"layer": "7-POCKET-EM5-Z14", "extrusion": (0, 0, -1)},
+        )
+        stream = io.StringIO()
+        doc.write(stream)
+        buf = io.BytesIO(stream.getvalue().encode("cp1252", errors="replace"))
+        buf.seek(0)
+
+        d = leer_dxf(buf, nombre="EU21119_X_MDF_WOOD_CEREZO_T1.dxf")
+        assert len(d.circulos) == 1
+        # El círculo se extrae con X invertida (Arbitrary Axis Algorithm)
+        assert d.circulos[0]["x"] == pytest.approx(-869.5)
+        assert d.circulos[0]["y"] == pytest.approx(-9377.0)
+
+    def test_polilinea_extrusion_negativa_aplica_arbitrary_axis(self):
+        """PASS: POLYLINE/LWPOLYLINE con extrusion Z=-1 → vértices X invertidos
+        antes de calcular bbox. Permite asociar cazoletas de cara trasera al
+        contorno de su pieza."""
+        from core.extractor_dxf import leer_dxf
+        doc = ezdxf.new(dxfversion="R2010")
+        msp = doc.modelspace()
+        if "10_12-CUTEXT-EM5-Z18" not in doc.layers:
+            doc.layers.add("10_12-CUTEXT-EM5-Z18")
+        # CUTEXT en OCS con extrusion Z=-1: X 820.5..1618.5 → WCS X -1618.5..-820.5
+        msp.add_lwpolyline(
+            [(820.5, -9400.5), (1618.5, -9400.5),
+             (1618.5, -9202.5), (820.5, -9202.5)],
+            dxfattribs={"layer": "10_12-CUTEXT-EM5-Z18", "extrusion": (0, 0, -1)},
+        )
+        stream = io.StringIO()
+        doc.write(stream)
+        buf = io.BytesIO(stream.getvalue().encode("cp1252", errors="replace"))
+        buf.seek(0)
+
+        d = leer_dxf(buf, nombre="EU21119_X_MDF_WOOD_CEREZO_T1.dxf")
+        assert len(d.piezas_contorno) == 1
+        c = d.piezas_contorno[0]
+        # X de OCS [820.5, 1618.5] → WCS [-1618.5, -820.5]
+        assert c["xmin"] == pytest.approx(-1618.5)
+        assert c["xmax"] == pytest.approx(-820.5)
+        assert c["ymin"] == pytest.approx(-9400.5)
+        assert c["ymax"] == pytest.approx(-9202.5)
+
+    def test_cazoleta_y_cutext_z_negativo_se_asocian_correctamente(self):
+        """Regresión EU-21119: cazoleta con Z=-1 dentro de CUTEXT con Z=-1
+        debe asociarse a esa pieza tras la transformación WCS. Antes del fix,
+        las cazoletas Z=-1 se filtraban y se reportaban falsos positivos
+        de tipo 'pieza con 1 sola bisagra'."""
+        from core.extractor_dxf import leer_dxf
+        from core.reglas_loader import cargar_reglas
+        from checks.checks_dxf import check_distancia_bisagras
+
+        doc = ezdxf.new(dxfversion="R2010")
+        msp = doc.modelspace()
+        for layer in ("7-POCKET-EM5-Z14", "6-POCKET-EM5-Z14",
+                      "10_12-CUTEXT-EM5-Z18"):
+            if layer not in doc.layers:
+                doc.layers.add(layer)
+        # Pieza 798×198mm en cara trasera (extrusion Z=-1).
+        # 2 bisagras METOD: una a 49 mm de xmin (X=869.5) y otra a 149 mm de
+        # xmax (X=1469.5). Distancia 600 mm = 12×50 ✓.
+        ext_neg = {"extrusion": (0, 0, -1)}
+        msp.add_lwpolyline(
+            [(820.5, -9400.5), (1618.5, -9400.5),
+             (1618.5, -9202.5), (820.5, -9202.5)],
+            dxfattribs={"layer": "10_12-CUTEXT-EM5-Z18", **ext_neg},
+        )
+        # Cazoletas (radio 17.5) y companions METOD (radio 4.0)
+        for cx in (869.5, 1469.5):
+            msp.add_circle((cx, -9377.0), radius=17.5,
+                           dxfattribs={"layer": "7-POCKET-EM5-Z14", **ext_neg})
+            for off in (-22.5, 22.5):
+                msp.add_circle((cx + off, -9367.5), radius=4.0,
+                               dxfattribs={"layer": "6-POCKET-EM5-Z14", **ext_neg})
+        stream = io.StringIO()
+        doc.write(stream)
+        buf = io.BytesIO(stream.getvalue().encode("cp1252", errors="replace"))
+        buf.seek(0)
+
+        d = leer_dxf(buf, nombre="EU21119_X_MDF_WOOD_CEREZO_T1.dxf")
+        # Tras transformación WCS, todo está en X negativo pero coherente:
+        # las 2 cazoletas caen dentro del CUTEXT.
+        reglas = cargar_reglas(ROOT / "reglas.yaml")
+        r = check_distancia_bisagras([d], reglas)
+        assert r.resultado == "PASS", r.detalle
+
     def test_circulos_y_polilineas_coexisten(self):
         """PASS: extractor procesa círculos y polilíneas en el mismo DXF
         sin que uno corrompa al otro (regresión: el parser maneja la

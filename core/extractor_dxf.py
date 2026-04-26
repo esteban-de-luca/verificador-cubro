@@ -218,6 +218,9 @@ def _parsear_entities_raw(contenido: str) -> list[dict]:
             elif poly is not None:
                 if codigo == 8:
                     poly["layer"] = valor
+                elif codigo == 230:  # Z de la dirección de extrusión
+                    try: poly["extrusion_z"] = float(valor)
+                    except ValueError: pass
                 # codes 66/70: flags, ignoramos
             elif cur is not None:
                 if codigo == 8:
@@ -292,25 +295,41 @@ def _extraer_layers_y_conteos(
     return layers, layers_con_geometria, conteos_layer
 
 
+def _aplicar_extrusion_wcs(x: float, y: float, extrusion_z: float) -> tuple[float, float]:
+    """
+    Convierte coordenadas OCS (Object Coord System) a WCS (World Coord System)
+    aplicando el Arbitrary Axis Algorithm del DXF.
+
+    Cuando una entidad 2D tiene dirección de extrusión Z = -1 (group code 230),
+    su sistema local está espejado respecto al WCS y la transformación es
+    X → -X, Y → Y. CUBRO usa esto para representar piezas de la cara trasera
+    en el mismo nesting (no son duplicados — son piezas reales en otra parte
+    del tablero).
+    """
+    if extrusion_z < 0:
+        return -x, y
+    return x, y
+
+
 def _extraer_circulos(entidades: list[dict]) -> list[dict]:
     """
     Devuelve los círculos con coordenadas válidas para checks geométricos (C-44).
     Cada entrada: {'layer': str, 'x': float, 'y': float, 'r': float}.
 
-    Filtra círculos con dirección de extrusión Z=-1 (entidades reflejadas
-    que CUBRO añade para representar la cara trasera del panel en
-    mecanizados a doble cara). Esos son duplicados visuales del mismo
-    agujero físico — no se deben contar dos veces.
+    Las coordenadas se convierten al sistema WCS aplicando el Arbitrary Axis
+    Algorithm: si extrusion_z = -1, X se invierte (X → -X). Esto hace que las
+    cazoletas de piezas en la "cara trasera" del nesting aparezcan en su
+    posición física correcta y se asocien al CUTEXT de su pieza.
     """
-    return [
-        {"layer": e["layer"], "x": e["x"], "y": e["y"], "r": e["r"]}
-        for e in entidades
-        if e["tipo"] == "CIRCLE"
-        and e.get("x") is not None
-        and e.get("y") is not None
-        and e.get("r") is not None
-        and e.get("extrusion_z", 1.0) >= 0   # excluir cara trasera (Z=-1)
-    ]
+    out: list[dict] = []
+    for e in entidades:
+        if e["tipo"] != "CIRCLE":
+            continue
+        if e.get("x") is None or e.get("y") is None or e.get("r") is None:
+            continue
+        x, y = _aplicar_extrusion_wcs(e["x"], e["y"], e.get("extrusion_z", 1.0))
+        out.append({"layer": e["layer"], "x": x, "y": y, "r": e["r"]})
+    return out
 
 
 def _extraer_contornos_pieza(
@@ -326,6 +345,9 @@ def _extraer_contornos_pieza(
     rectangulares y la cazoleta debe caer dentro de ese rectángulo para
     pertenecer a la pieza.
 
+    Si la polilínea tiene extrusion_z = -1 (cara trasera), se aplica la
+    transformación X → -X a los vértices antes de calcular el bbox.
+
     Cada entrada devuelta: {'layer', 'xmin', 'xmax', 'ymin', 'ymax'}.
     """
     contornos: list[dict] = []
@@ -337,8 +359,10 @@ def _extraer_contornos_pieza(
         vertices = e.get("vertices") or []
         if not vertices:
             continue
-        xs = [v[0] for v in vertices]
-        ys = [v[1] for v in vertices]
+        ez = e.get("extrusion_z", 1.0)
+        vertices_wcs = [_aplicar_extrusion_wcs(vx, vy, ez) for vx, vy in vertices]
+        xs = [v[0] for v in vertices_wcs]
+        ys = [v[1] for v in vertices_wcs]
         contornos.append({
             "layer": e["layer"],
             "xmin": min(xs),
