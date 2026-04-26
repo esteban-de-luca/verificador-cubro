@@ -342,6 +342,15 @@ tipologias:
   apertura_nunca:
     - C
 
+  # C-20 (excepción): piezas P con torn. que SÍ requieren apertura I/D.
+  # Caso típico: frentes compuestos donde una P+torn. se atornilla sobre
+  # otra P+cazta. del mismo mueble y abre junto a ella. La apertura I/D
+  # describe el sentido de giro compartido con la hermana.
+  # Match exacto sobre (ancho, alto) en ambas orientaciones.
+  apertura_obligatoria_p_torn:
+    - dim: [254, 798]
+      descripcion: "Frente compuesto — puerta secundaria atornillada"
+
   # C-28: tipologías que NO deben llevar tirador (alerta si lo tienen)
   tipologias_sin_mecanizado:
     - T

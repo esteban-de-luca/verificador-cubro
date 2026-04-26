@@ -288,6 +288,41 @@ class TestC20:
                         mecanizado="torn.", apertura="")]
         assert check_apertura_puertas(piezas, r).resultado == "PASS"
 
+    # --- Excepción: P+torn. de dim 254×798 (frente compuesto) ---
+    def test_pass_excepcion_p_torn_254x798_con_apertura(self, r):
+        # Regresión EU-21119 M3-P2: pieza 254×798 P con torn. + apertura I
+        # → PASS (frente compuesto que abre junto a la hermana con cazta.).
+        piezas = [Pieza("M3-P2", 254, 798, "MDF", "WOO", "Cerezo", "P",
+                        mecanizado="torn.", tirador="Square",
+                        posicion_tirador="2", color_tirador="CEREZO",
+                        apertura="I")]
+        assert check_apertura_puertas(piezas, r).resultado == "PASS"
+
+    def test_fail_excepcion_p_torn_254x798_sin_apertura(self, r):
+        # 254×798 P con torn. SIN apertura → FAIL (apertura obligatoria)
+        # Es una excepción declarada que requiere apertura siempre.
+        piezas = [Pieza("M3-P2", 254, 798, "MDF", "WOO", "Cerezo", "P",
+                        mecanizado="torn.", apertura="")]
+        res = check_apertura_puertas(piezas, r)
+        assert res.resultado == "FAIL" and res.bloquea
+        assert "requiere apertura" in res.detalle
+
+    def test_pass_excepcion_p_torn_dim_rotada(self, r):
+        # La excepción casa también en orientación 798×254 (despiece rotado).
+        piezas = [Pieza("M3-P2", 798, 254, "MDF", "WOO", "Cerezo", "P",
+                        mecanizado="torn.", apertura="D")]
+        assert check_apertura_puertas(piezas, r).resultado == "PASS"
+
+    def test_fail_p_torn_otra_dim_sigue_prohibiendo_apertura(self, r):
+        # Una P+torn. de OTRA dimensión (no 254×798) sigue con la regla
+        # general: apertura PROHIBIDA. Verifica que la excepción no se
+        # generaliza.
+        piezas = [Pieza("M7-P1", 596, 798, "PLY", "LAM", "Pale", "P",
+                        mecanizado="torn.", apertura="I")]
+        res = check_apertura_puertas(piezas, r)
+        assert res.resultado == "FAIL"
+        assert "no debe tener apertura" in res.detalle
+
 
 # ===========================================================================
 # C-21: X siempre con apertura I/D (con o sin tirador)

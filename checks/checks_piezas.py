@@ -210,21 +210,52 @@ def check_sufijo_tipologia(piezas: list[Pieza], reglas: dict) -> CheckResult:
 # C-20: Puertas P con apertura coherente con mecanizado
 # ---------------------------------------------------------------------------
 
+def _es_p_torn_apertura_obligatoria(
+    p: Pieza, excepciones: list[dict],
+) -> bool:
+    """¿La pieza P+torn. cae en una excepción donde la apertura es obligatoria?
+
+    Las excepciones se declaran en reglas.yaml bajo
+    `tipologias.apertura_obligatoria_p_torn` como lista de {dim, descripcion}.
+    Match exacto en cualquier orientación (ancho×alto o alto×ancho).
+    """
+    for spec in excepciones:
+        sw, sh = spec["dim"]
+        if (p.ancho, p.alto) == (sw, sh) or (p.ancho, p.alto) == (sh, sw):
+            return True
+    return False
+
+
 def check_apertura_puertas(piezas: list[Pieza], reglas: dict) -> CheckResult:
     """C-20: Coherencia apertura-mecanizado en puertas P. Bloquea: Sí.
 
     - P con cazta. (puerta normal con bisagras) → apertura I/D obligatoria.
     - P con torn. (frente de cajón sin bisagras)  → apertura I/D PROHIBIDA.
+    - P con torn. en EXCEPCIÓN declarada (frente compuesto que abre junto a
+      una hermana con cazta.) → apertura I/D OBLIGATORIA.
     - P sin mecanizado declarado → apertura obligatoria por defecto
       (otro check captura el mecanizado faltante si aplica).
     """
     tipologias_obligatoria: list[str] = reglas["tipologias"]["apertura_obligatoria"]
+    excepciones_p_torn: list[dict] = (
+        reglas["tipologias"].get("apertura_obligatoria_p_torn") or []
+    )
     errores: list[str] = []
     for p in piezas:
         if p.tipologia not in tipologias_obligatoria:
             continue
         es_torn = "torn." in p.mecanizado.lower()
-        if es_torn and p.tiene_apertura:
+        es_excep = es_torn and _es_p_torn_apertura_obligatoria(p, excepciones_p_torn)
+
+        if es_excep:
+            # Excepción: aunque tenga torn., la apertura es obligatoria
+            # (frente compuesto que abre junto a la hermana con cazta.).
+            if not p.tiene_apertura:
+                errores.append(
+                    f"{p.id}: P {p.ancho}×{p.alto} con torn. (frente compuesto) "
+                    f"requiere apertura I/D"
+                )
+        elif es_torn and p.tiene_apertura:
             errores.append(
                 f"{p.id}: P con torn. (frente de cajón) no debe tener "
                 f"apertura I/D (tiene: '{p.apertura}')"
