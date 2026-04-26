@@ -343,6 +343,7 @@ tipologias:
     - E
     - R
     - CT
+    - FE   # Frente de encimera (sin mecanizado, como E o L)
 
   # C-27: mecanizado esperado por tipología
   # Si la tipología no aparece aquí, no se espera mecanizado

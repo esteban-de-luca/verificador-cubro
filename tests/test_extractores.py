@@ -177,19 +177,47 @@ class TestPieza:
 class TestInferirTipologia:
 
     @pytest.mark.parametrize("id_pieza,mec,esperado", [
+        # Sueltos clásicos
         ("E1", "", "E"),
         ("E12", "", "E"),
         ("B3", "", "B"),
         ("R1", "", "R"),
         ("R1", "vent.", "RV"),
         ("H2", "", "H"),
+        # Sueltos nuevos
+        ("T1", "", "T"),
+        ("T15", "", "T"),
+        ("PL1", "", "L"),
+        ("PL3", "", "L"),
+        ("FE1", "", "FE"),
+        ("FE2", "", "FE"),
+        ("F1", "", "F"),
+        ("F8", "", "F"),
+        ("P1", "", "P"),    # Puerta suelta — se valida como P
+        ("P8", "", "P"),
+        # Prefijo M{n}- (Mueble METOD)
         ("M2-P1", "", "P"),
         ("M4-C2", "", "C"),
         ("M4-PL1", "", "L"),
+        ("M3-L1", "", "L"),
         ("M1-T1", "", "T"),
+        ("M1-TBE1", "", "TBE"),
+        # Prefijo P{n}- (Armario PAX)
+        ("P1-P1", "", "X"),     # Puerta PAX
+        ("P3-P2", "", "X"),
+        ("P1-T1", "", "T"),     # Tapeta PAX
+        ("P3-T1", "", "T"),
+        ("P1-PL1", "", "L"),    # Panel lateral PAX
+        ("P2-L1", "", "L"),
+        # Fallback: IDs no reconocidos → cadena vacía
+        ("XYZ123", "", ""),
+        ("A1", "", ""),
+        ("M1-Q1", "", ""),      # sufijo desconocido
+        ("M1-X1", "", ""),      # M{n}-X{n} no existe en CUBRO
+        ("P1-X1", "", ""),      # sufijo X tras P{n}- tampoco
     ])
     def test_inferencia_correcta(self, id_pieza, mec, esperado):
-        """PASS: tipología inferida correctamente para patrones estándar."""
+        """PASS: tipología inferida correctamente para todos los patrones."""
         assert _inferir_tipologia(id_pieza, mec) == esperado
 
 

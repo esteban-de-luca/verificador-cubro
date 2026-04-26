@@ -72,7 +72,7 @@ class Pieza:
     material: str                  # "PLY" | "MDF"
     gama: str                      # "LAM" | "LIN" | "LAC" | "WOO"
     acabado: str                   # "Pale", "Blanco", etc.
-    tipologia: str                 # "P" | "C" | "X" | "E" | "R" | "RV" | "T" | "L" | "B" | "H"
+    tipologia: str                 # "P" | "C" | "X" | "E" | "R" | "RV" | "T" | "L" | "B" | "H" | "TBE" | "FE" | "F" | "" (no inferible)
     mecanizado: str = ""           # "cazta." | "torn." | "vent." | "" etc.
     tirador: str = ""              # "Round" | "Bar" | "Knob" | ""
     posicion_tirador: str = ""     # "1"–"5" | ""

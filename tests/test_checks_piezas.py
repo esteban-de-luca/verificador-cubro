@@ -20,6 +20,7 @@ from checks.checks_piezas import (
     check_baldas_dimensiones, check_cajones_dimensiones,
     check_mec_torn_en_ancho_especial, check_mecanizado_rodapies,
     check_tirador_en_sin_mecanizado, check_alto_puerta_sufijo,
+    check_tipologia_inferible,
 )
 
 
@@ -398,6 +399,12 @@ class TestC23:
                         mecanizado="cazta.", apertura="D")]
         assert check_tirador_completo(piezas).resultado == "PASS"
 
+    def test_pass_faktum_no_genera_fail_aunque_falte_color(self):
+        # F (Faktum) excluida de C-23: aunque tenga tirador incompleto, no FAIL.
+        piezas = [Pieza("F1", 400, 798, "PLY", "LAM", "Pale", "F",
+                        tirador="Round", posicion_tirador="", color_tirador="")]
+        assert check_tirador_completo(piezas).resultado == "PASS"
+
 
 # ===========================================================================
 # C-24
@@ -418,6 +425,43 @@ class TestC24:
         piezas = [Pieza("M1-P1", 400, 798, "PLY", "LAM", "Pale", "P",
                         tirador="", posicion_tirador="")]
         assert check_posicion_sin_tirador(piezas).resultado == "PASS"
+
+    def test_pass_faktum_excluida(self):
+        # F (Faktum) excluida de C-24: aunque tenga posición sin tirador, no FAIL.
+        piezas = [Pieza("F1", 400, 798, "PLY", "LAM", "Pale", "F",
+                        tirador="", posicion_tirador="3")]
+        assert check_posicion_sin_tirador(piezas).resultado == "PASS"
+
+
+# ===========================================================================
+# C-33: IDs con tipología inferible
+# ===========================================================================
+class TestC33:
+    def test_pass_todos_ids_reconocidos(self):
+        piezas = [
+            Pieza("M1-P1", 400, 798, "PLY", "LAM", "Pale", "P"),
+            Pieza("E1", 600, 200, "MDF", "LAC", "Blanco", "E"),
+            Pieza("P1-P1", 400, 2010, "MDF", "WOO", "Cerezo", "X"),
+            Pieza("F1", 400, 798, "PLY", "LAM", "Pale", "F"),
+            Pieza("FE1", 600, 100, "MDF", "LAC", "Blanco", "FE"),
+        ]
+        assert check_tipologia_inferible(piezas).resultado == "PASS"
+
+    def test_skip_ids_no_reconocidos(self):
+        # IDs con tipología "" (cadena vacía) → SKIP listándolos
+        piezas = [
+            Pieza("M1-P1", 400, 798, "PLY", "LAM", "Pale", "P"),  # OK
+            Pieza("XYZ123", 100, 100, "PLY", "LAM", "Pale", ""),  # no reconocido
+            Pieza("ABC1", 100, 100, "PLY", "LAM", "Pale", ""),    # no reconocido
+        ]
+        res = check_tipologia_inferible(piezas)
+        assert res.resultado == "SKIP"
+        assert not res.bloquea
+        assert "XYZ123" in res.detalle and "ABC1" in res.detalle
+
+    def test_no_bloquea(self):
+        piezas = [Pieza("XYZ", 100, 100, "PLY", "LAM", "Pale", "")]
+        assert not check_tipologia_inferible(piezas).bloquea
 
 
 # ===========================================================================

@@ -273,12 +273,20 @@ def check_sin_apertura_cajones(piezas: list[Pieza], reglas: dict) -> CheckResult
 # C-23: Toda pieza con tirador tiene modelo + posición + color
 # ---------------------------------------------------------------------------
 
+#: Tipologías excluidas de validaciones de tirador (C-23, C-24).
+#: F (Faktum) nunca debe disparar FAIL/WARN — son piezas residuales que
+#: se controlan manualmente.
+_TIPOLOGIAS_TIRADOR_SIN_VALIDAR = frozenset({"F"})
+
+
 def check_tirador_completo(piezas: list[Pieza]) -> CheckResult:
     """C-23: Pieza con tirador → modelo + posición + color, los tres. Bloquea: Sí."""
     errores = []
     for p in piezas:
         if not p.tiene_tirador:
             continue
+        if p.tipologia in _TIPOLOGIAS_TIRADOR_SIN_VALIDAR:
+            continue  # F (Faktum): silenciada por petición de negocio
         faltantes = []
         if not p.posicion_tirador.strip():
             faltantes.append("posición")
@@ -300,6 +308,7 @@ def check_posicion_sin_tirador(piezas: list[Pieza]) -> CheckResult:
         f"{p.id}: posición '{p.posicion_tirador}' sin tirador"
         for p in piezas
         if p.posicion_tirador.strip() and not p.tiene_tirador
+        and p.tipologia not in _TIPOLOGIAS_TIRADOR_SIN_VALIDAR
     ]
     return _resultado("C-24", "Sin posición de tirador sin tirador asignado",
                       errores, True, _GRUPO_TIRA)
@@ -550,4 +559,32 @@ def check_pax_mecanizado(piezas: list[Pieza]) -> CheckResult:
     return _resultado(
         "C-32", "Puertas X siempre con cazta. (nunca torn.)",
         errores, True, _GRUPO_MEC,
+    )
+
+
+# ---------------------------------------------------------------------------
+# C-33: IDs con tipología inferible
+# ---------------------------------------------------------------------------
+
+def check_tipologia_inferible(piezas: list[Pieza]) -> CheckResult:
+    """C-33: Los IDs de pieza deben encajar en algún patrón conocido para
+    poder inferir su tipología. Bloquea: No (informativo).
+
+    Cuando _inferir_tipologia devuelve cadena vacía, significa que el ID
+    no encaja en ningún patrón documentado. Estos IDs se reportan como
+    SKIP para revisión manual del operario, sin afectar al flujo de
+    validación (los demás checks filtran por tipología y los ignoran
+    automáticamente).
+    """
+    sin_tipologia = [p.id for p in piezas if not p.tipologia.strip()]
+    if not sin_tipologia:
+        return _pass("C-33", "IDs con tipología inferible", False, _GRUPO_PIEZAS)
+    n = len(sin_tipologia)
+    listado = ", ".join(sin_tipologia[:10])
+    if n > 10:
+        listado += f" (y {n - 10} más)"
+    return _skip(
+        "C-33", "IDs con tipología inferible",
+        f"IDs sin tipología reconocida (revisar manualmente): {listado}",
+        _GRUPO_PIEZAS,
     )

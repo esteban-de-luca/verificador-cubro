@@ -55,6 +55,7 @@ from checks.checks_piezas import (
     check_mecanizado_rodapies,
     check_tirador_en_sin_mecanizado,
     check_alto_puerta_sufijo,
+    check_tipologia_inferible,
 )
 from checks.checks_dxf import (
     check_layer_control,
@@ -278,6 +279,7 @@ def _ejecutar_checks(
     resultados.append(check_mecanizado_rodapies(datos.piezas, reglas))
     resultados.append(check_tirador_en_sin_mecanizado(datos.piezas, reglas))
     resultados.append(check_alto_puerta_sufijo(datos.piezas, reglas))
+    resultados.append(check_tipologia_inferible(datos.piezas))
 
     # DXF (C-30..C-43)
     resultados.append(check_layer_control(datos.dxfs, reglas))

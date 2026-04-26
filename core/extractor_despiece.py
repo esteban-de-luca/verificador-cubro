@@ -98,9 +98,17 @@ def _mapear_columnas(fila_cabecera: list) -> dict[int, str]:
 def _inferir_tipologia(id_pieza: str, mecanizado: str) -> str:
     """
     Infiere la tipología a partir del sufijo del ID y del mecanizado.
-    Fallback conservador: devuelve 'X' (desconocido) si no hay patrón claro.
+
+    Patrones reconocidos (ver matriz en docstring del módulo):
+      Sueltos:       E{n}, B{n}, H{n}, R{n}, T{n}, PL{n}, FE{n}, F{n}, P{n}
+      Prefijo M{n}-: P, C, PL, L, T, TBE  (Mueble METOD)
+      Prefijo P{n}-: P (=X), T, PL, L     (Armario PAX)
+
+    Devuelve cadena vacía '' si el ID no encaja en ningún patrón conocido.
+    El check C-33 reporta esos IDs como SKIP para revisión manual.
     """
-    # IDs sin prefijo de mueble: E1, R1, B1, H1
+    # IDs sueltos (sin prefijo). Orden: regexes más específicos primero
+    # para evitar ambigüedad con los más cortos (PL vs P, FE vs F).
     if re.match(r"^E\d+$", id_pieza, re.IGNORECASE):
         return "E"
     if re.match(r"^B\d+$", id_pieza, re.IGNORECASE):
@@ -109,25 +117,45 @@ def _inferir_tipologia(id_pieza: str, mecanizado: str) -> str:
         return "H"
     if re.match(r"^R\d+$", id_pieza, re.IGNORECASE):
         return "RV" if "vent" in mecanizado.lower() else "R"
+    if re.match(r"^T\d+$", id_pieza, re.IGNORECASE):
+        return "T"
+    if re.match(r"^PL\d+$", id_pieza, re.IGNORECASE):
+        return "L"
+    if re.match(r"^FE\d+$", id_pieza, re.IGNORECASE):
+        return "FE"
+    if re.match(r"^F\d+$", id_pieza, re.IGNORECASE):
+        return "F"
+    if re.match(r"^P\d+$", id_pieza, re.IGNORECASE):
+        return "P"  # Puerta suelta — se valida con todas las reglas P
 
-    # IDs con prefijo de mueble: MX-PY, MX-CY, MX-PLY, MX-TY, MX-TBEY
-    m = re.match(r"^M\d+-([A-Za-z]+)\d*$", id_pieza)
-    if m:
-        sufijo = m.group(1).upper()
+    # IDs con prefijo M{n}- (Mueble METOD)
+    m_metod = re.match(r"^M\d+-([A-Za-z]+)\d*$", id_pieza)
+    if m_metod:
+        sufijo = m_metod.group(1).upper()
         if sufijo == "P":
             return "P"
         if sufijo == "C":
             return "C"
-        if sufijo == "X":
-            return "X"
         if sufijo in ("PL", "L"):
             return "L"
         if sufijo == "T":
             return "T"
         if sufijo == "TBE":
             return "TBE"
+        # Nota: M{n}-X{n} no existe en CUBRO (PAX usa prefijo P{n}-).
 
-    return "X"
+    # IDs con prefijo P{n}- (Armario PAX)
+    m_pax = re.match(r"^P\d+-([A-Za-z]+)\d*$", id_pieza)
+    if m_pax:
+        sufijo = m_pax.group(1).upper()
+        if sufijo == "P":
+            return "X"  # Puerta PAX
+        if sufijo == "T":
+            return "T"
+        if sufijo in ("PL", "L"):
+            return "L"
+
+    return ""  # Sin patrón reconocido — C-33 lo reporta como SKIP
 
 
 #: Palabras que indican filas de totales/subtotales — se ignoran como piezas.
