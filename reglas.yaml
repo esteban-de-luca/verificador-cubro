@@ -387,11 +387,13 @@ nomenclatura:
     nesting_pdf_mdf: "*MDF*.pdf"
     bultos:     "BULTOS_*"
     destino_caja: "DESTINO CAJA_*"
-    dossier:    "CUBRO_Technical_Project_Dossier_*"
-    dossier_fr: "CUBRO_Dossier_technique_du_projet_*"
-    dossier_es: "CUBRO_Dossier_de_proyecto_*"
-    dossier_corto: "CUBRO_DOSSIER_*"
-    technical_project: "CUBRO_TECHNICAL_PROJECT_*"
+    # Dossiers, planos y alzados — patrones flexibles que cubren cualquier
+    # variante de prefijo, idioma o redacción (CUBRO_, sin prefijo, ES/EN/FR,
+    # "técnico_de_proyecto" / "Technical_Project_Dossier" / etc.).
+    dossier:    "*DOSSIER*"
+    technical_project: "*TECHNICAL_PROJECT*"
+    planos:     "*PLANO*"
+    alzados:    "*ALZADO*"
     extraccion: "EXTRACCION_*"
     informe:    "informe_*"
     packing_list_cliente: "PACKING LIST CLIENTE_*"

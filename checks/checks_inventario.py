@@ -86,8 +86,13 @@ def check_id_consistente(nombres_archivos: list[str], id_proyecto: str) -> Check
 def check_nomenclatura(nombres_archivos: list[str], reglas: dict) -> CheckResult:
     """
     C-02: Cada archivo debe coincidir con al menos un patrón conocido.
-    Los archivos no reconocidos generan WARN (no bloquea).
+
+    Los archivos no reconocidos generan SKIP (informativo, no bloquea ni
+    alerta) — la lista de patrones cubre los archivos del fichero de corte
+    estándar, y otros archivos auxiliares (planos, alzados, dossiers de
+    diseño, anotaciones internas) son válidos pero no entran en el check.
     """
+    DESC = "Nomenclatura sigue el patrón definido"
     patrones = reglas["nomenclatura"]["patrones"]
     todos_patrones = list(patrones.values())
 
@@ -99,10 +104,14 @@ def check_nomenclatura(nombres_archivos: list[str], reglas: dict) -> CheckResult
         if not reconocido:
             no_reconocidos.append(nombre)
 
-    return _resultado(
-        "C-02", "Nomenclatura sigue el patrón definido",
-        no_reconocidos, False, _GRUPO, tipo_fail="WARN",
-    )
+    if not no_reconocidos:
+        return _pass("C-02", DESC, False, _GRUPO)
+
+    n = len(no_reconocidos)
+    detalle = "; ".join(no_reconocidos[:5])
+    if n > 5:
+        detalle += f" (y {n - 5} más)"
+    return _skip("C-02", DESC, detalle, _GRUPO)
 
 
 # ---------------------------------------------------------------------------

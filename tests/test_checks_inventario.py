@@ -120,16 +120,44 @@ class TestC02:
         r = check_nomenclatura(nombres, reglas)
         assert r.resultado == "PASS"
 
-    def test_warn_archivo_desconocido(self, reglas):
+    def test_skip_archivo_desconocido(self, reglas):
+        # Archivos no reconocidos → SKIP (informativo, no alerta)
         nombres = ["DESPIECE_EU-21822.xlsx", "ETIQUETAS_EU-21822.csv",
                    "EAN LOGISTIC_EU-21822.csv", "archivo_raro_sin_patron.xlsx"]
         r = check_nomenclatura(nombres, reglas)
-        assert r.resultado == "WARN"
+        assert r.resultado == "SKIP"
         assert not r.bloquea
+        assert "archivo_raro_sin_patron.xlsx" in r.detalle
 
     def test_no_bloquea(self, reglas):
         r = check_nomenclatura(["random.docx"], reglas)
         assert not r.bloquea
+
+    def test_pass_dossier_variantes(self, reglas):
+        # Cualquier nombre que contenga "DOSSIER" se acepta — cubre todos los
+        # idiomas y prefijos: CUBRO_Technical_Project_Dossier_*, CUBRO_Dossier_*,
+        # Dossier_técnico_de_proyecto_* (sin prefijo CUBRO_), etc.
+        nombres = [
+            "CUBRO_Technical_Project_Dossier_EU-21822.pdf",
+            "CUBRO_Dossier_de_proyecto_EU-21822.pdf",
+            "CUBRO_Dossier_technique_du_projet_EU-21822.pdf",
+            "Dossier_técnico_de_proyecto_SP-22429_Paula_Boixet_v2.pdf",
+            "DOSSIER_EU-21822.pdf",
+        ]
+        r = check_nomenclatura(nombres, reglas)
+        assert r.resultado == "PASS"
+
+    def test_pass_planos_y_alzados(self, reglas):
+        # Planos / Alzados (singular y plural, mayúsculas/minúsculas)
+        nombres = [
+            "Planos_proyecto_SP-22429.pdf",
+            "PLANOS_EU-21822.pdf",
+            "Alzados_proyecto_SP-22429.pdf",
+            "Plano_distribucion.pdf",
+            "Alzado_cocina.pdf",
+        ]
+        r = check_nomenclatura(nombres, reglas)
+        assert r.resultado == "PASS"
 
 
 # ---------------------------------------------------------------------------
