@@ -247,17 +247,18 @@ def _render_controles(todos: list[dict]) -> bool:
 # Render síncrono (cache hit)
 # ---------------------------------------------------------------------------
 
-def _render_zona_cola(todos: list[dict]) -> bool:
+def _render_zona_cola(todos: list[dict]) -> tuple[bool, Any]:
     n_total = len(todos)
     n_responsables = len({p["responsable"] for p in todos})
 
     _render_header(n_total, n_responsables)
     verify_clicked = _render_controles(todos)
     st.markdown("---")
+    progress_ph = st.empty()
 
     if not todos:
         st.success("¡No hay proyectos por verificar! Todo aprobado.")
-        return False
+        return False, progress_ph
 
     por_responsable: dict[str, list[dict]] = {}
     for p in todos:
@@ -270,7 +271,7 @@ def _render_zona_cola(todos: list[dict]) -> bool:
         if ps:
             _render_grupo_responsable(responsable, ps)
 
-    return verify_clicked
+    return verify_clicked, progress_ph
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +299,7 @@ def _stream_cargar_y_renderizar() -> tuple[list[dict], bool]:
     controls_ph = st.empty()
     sep_ph = st.empty()
     sep_ph.markdown("---")
+    progress_ph = st.empty()
 
     resp_phs: dict[str, Any] = {}
     for r in config.RESPONSABLES:
@@ -394,20 +396,21 @@ def _stream_cargar_y_renderizar() -> tuple[list[dict], bool]:
     if n_total == 0:
         st.success("¡No hay proyectos por verificar! Todo aprobado.")
 
-    return proyectos_total, verify_clicked
+    return proyectos_total, verify_clicked, progress_ph
 
 
 # ---------------------------------------------------------------------------
 # Verificación secuencial
 # ---------------------------------------------------------------------------
 
-def _verificar_cola(seleccionados: list[dict]) -> None:
+def _verificar_cola(seleccionados: list[dict], progress_ph: Any) -> None:
     n = len(seleccionados)
     st.session_state.cola_resultados = []
 
-    st.markdown(f"### Verificando {n} proyecto{'s' if n > 1 else ''}…")
-    barra = st.progress(0, text="Iniciando…")
-    contenedor_estado = st.empty()
+    with progress_ph.container():
+        st.markdown(f"### Verificando {n} proyecto{'s' if n > 1 else ''}…")
+        barra = st.progress(0, text="Iniciando…")
+        contenedor_estado = st.empty()
 
     for i, proyecto in enumerate(seleccionados):
         nombre = proyecto["nombre_limpio"]
@@ -635,10 +638,10 @@ def _do_zona_cola() -> None:
     """Resuelve cache hit/miss y dispara verificación si procede."""
     if _cache_valid():
         todos = st.session_state["cola_data"]
-        verify_clicked = _render_zona_cola(todos)
+        verify_clicked, progress_ph = _render_zona_cola(todos)
     else:
         try:
-            todos, verify_clicked = _stream_cargar_y_renderizar()
+            todos, verify_clicked, progress_ph = _stream_cargar_y_renderizar()
         except Exception as exc:
             st.error(f"Error al conectar con Drive: {exc}")
             return
@@ -649,7 +652,7 @@ def _do_zona_cola() -> None:
             p for p in todos if p["id"] in st.session_state.cola_seleccion
         ]
         if seleccionados:
-            _verificar_cola(seleccionados)
+            _verificar_cola(seleccionados, progress_ph)
 
 
 def main() -> None:
