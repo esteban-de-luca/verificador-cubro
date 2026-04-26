@@ -900,3 +900,64 @@ class TestC44:
         )
         assert r.resultado == "FAIL"
         assert "sin pieza asignada" in r.detalle
+
+    # --- Excepciones: configuraciones de puerta con herrajes custom ---
+    def test_pass_excepcion_puerta_4_bisagras_798x256(self, reglas):
+        # Caso real EU-21119 T2: puerta 798×256 con 4 bisagras dispuestas en
+        # parrilla 2×2 (700mm en X, 220mm en Y). 2 cazoletas tienen companions
+        # en otra layer (3-DRILL). Configuración custom validada por diseño.
+        # La excepción declarada en reglas.yaml debe hacer PASS.
+        circs = [
+            # 4 cazoletas (r=17.5) en parrilla 2x2
+            _circulo(L7, 2184.5, -3618.0),
+            _circulo(L7, 2884.5, -3618.0),
+            _circulo(L7, 2184.5, -3398.0),
+            _circulo(L7, 2884.5, -3398.0),
+            # Solo las 2 cazoletas inferiores tienen companions METOD reales
+            _circulo(L6M, 2162.0, -3608.5, r=4.0),
+            _circulo(L6M, 2207.0, -3608.5, r=4.0),
+            _circulo(L6M, 2862.0, -3608.5, r=4.0),
+            _circulo(L6M, 2907.0, -3608.5, r=4.0),
+        ]
+        contornos = [_bbox(2135.5, 2933.5, -3641.5, -3385.5)]  # 798×256
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
+        assert r.resultado == "PASS", r.detalle
+
+    def test_fail_pieza_misma_dim_pero_otro_n_cazoletas(self, reglas):
+        # Pieza 798×256 con SOLO 2 cazoletas (no 4) → la excepción NO aplica
+        # (n_cazoletas debe coincidir exactamente). La validación normal
+        # detecta que las 2 cazoletas no son múltiplo de 50 entre ellas.
+        circs = [
+            _circulo(L7, 2184.5, -3618.0),
+            _circulo(L7, 2233.0, -3618.0),  # distancia 48.5mm — NO múltiplo
+            _circulo(L6M, 2162.0, -3608.5, r=4.0),
+            _circulo(L6M, 2207.0, -3608.5, r=4.0),
+            _circulo(L6M, 2210.5, -3608.5, r=4.0),
+            _circulo(L6M, 2255.5, -3608.5, r=4.0),
+        ]
+        contornos = [_bbox(2135.5, 2933.5, -3641.5, -3385.5)]
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
+        assert r.resultado == "FAIL"
+        # La excepción no aplica porque solo hay 2 cazoletas, no 4
+
+    def test_pass_excepcion_dimensiones_rotadas(self, reglas):
+        # La excepción casa en cualquier orientación: 256×798 también.
+        circs = [
+            _circulo(L7, 3618.0, -2184.5),
+            _circulo(L7, 3618.0, -2884.5),
+            _circulo(L7, 3398.0, -2184.5),
+            _circulo(L7, 3398.0, -2884.5),
+            _circulo(L6M, 3608.5, -2162.0, r=4.0),
+            _circulo(L6M, 3608.5, -2207.0, r=4.0),
+            _circulo(L6M, 3608.5, -2862.0, r=4.0),
+            _circulo(L6M, 3608.5, -2907.0, r=4.0),
+        ]
+        contornos = [_bbox(3385.5, 3641.5, -2933.5, -2135.5)]  # 256×798
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
+        assert r.resultado == "PASS", r.detalle

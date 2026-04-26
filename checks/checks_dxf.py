@@ -503,6 +503,41 @@ def _asignar_pieza(x: float, y: float, contornos: list[dict]) -> int | None:
     return min(candidatos, key=lambda t: t[1])[0]
 
 
+#: Tolerancia (mm) para casar dimensiones de pieza con configuraciones
+#: especiales — absorbe ruido de coma flotante en coordenadas DXF.
+_TOL_DIM_ESPECIAL = 2.0
+
+
+def _es_pieza_especial(
+    bbox: dict,
+    n_cazoletas: int,
+    configuraciones: list[dict],
+) -> dict | None:
+    """
+    Si la pieza encaja con una configuración especial declarada en reglas
+    (por dimensiones ± tolerancia y nº exacto de cazoletas), devuelve la
+    entrada de configuración. Si no, devuelve None.
+
+    Las dimensiones se comparan en cualquier orden (la pieza puede estar
+    rotada en el nesting respecto a la declaración).
+    """
+    ancho = bbox["xmax"] - bbox["xmin"]
+    alto = bbox["ymax"] - bbox["ymin"]
+    for spec in configuraciones:
+        sw, sh = spec["dim"]
+        if int(spec.get("n_cazoletas", -1)) != n_cazoletas:
+            continue
+        match_dim = (
+            (abs(ancho - sw) < _TOL_DIM_ESPECIAL
+             and abs(alto - sh) < _TOL_DIM_ESPECIAL)
+            or (abs(ancho - sh) < _TOL_DIM_ESPECIAL
+                and abs(alto - sw) < _TOL_DIM_ESPECIAL)
+        )
+        if match_dim:
+            return spec
+    return None
+
+
 def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     """C-44: Distancia entre bisagras según tipo de bisagra y tamaño de pieza.
 
@@ -532,6 +567,7 @@ def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     altillo_cfg = cfg.get("pax_altillo") or {}
     umbral_altillo: float = float(altillo_cfg.get("umbral_mm", 700))
     borde_altillo: float = float(altillo_cfg.get("borde_mm", 68))
+    configs_especiales: list[dict] = cfg.get("configuraciones_especiales") or []
 
     errores: list[str] = []
     algun_tablero_con_bisagras = False
@@ -577,68 +613,81 @@ def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
                 "pieza_idx": pieza_idx,
             })
 
-        # --- Agrupar por (pieza, orientación, tipo) ---
-        grupos: dict[tuple, list[dict]] = {}
+        # --- Agrupar primero por pieza (para detectar excepciones) ---
+        por_pieza: dict[int, list[dict]] = {}
         for item in clasificados:
-            key = (item["pieza_idx"], item["orient"], item["tipo"])
-            grupos.setdefault(key, []).append(item)
+            por_pieza.setdefault(item["pieza_idx"], []).append(item)
 
-        # --- Verificar reglas por grupo ---
-        for (pieza_idx, orient, tipo), items in grupos.items():
+        for pieza_idx, items_pieza in por_pieza.items():
             bbox = contornos[pieza_idx]
-            if orient == "V":
-                eje, eje_perp = "Y", "X"
-                edge_low, edge_high = bbox["ymin"], bbox["ymax"]
-                vals = sorted(i["y"] for i in items)
-            else:
-                eje, eje_perp = "X", "Y"
-                edge_low, edge_high = bbox["xmin"], bbox["xmax"]
-                vals = sorted(i["x"] for i in items)
-            dim_pieza = edge_high - edge_low
 
-            tag_pieza = (
-                f"{dxf.nombre} — pieza "
-                f"{bbox['xmax'] - bbox['xmin']:.0f}×{bbox['ymax'] - bbox['ymin']:.0f}mm "
-                f"@ ({bbox['xmin']:.0f},{bbox['ymin']:.0f}) — bisagra {tipo}"
-            )
-
-            # Toda puerta debe tener ≥ 2 bisagras
-            if len(vals) < 2:
-                errores.append(
-                    f"{tag_pieza}: solo 1 bisagra "
-                    f"({eje}={vals[0]:.0f}). Mínimo 2 por puerta."
-                )
+            # Excepciones: configuraciones de puerta con herrajes custom.
+            # Si la pieza encaja, NO se valida en C-44 (otras reglas siguen).
+            spec_match = _es_pieza_especial(bbox, len(items_pieza), configs_especiales)
+            if spec_match is not None:
                 continue
 
-            es_altillo_pax = (tipo == "PAX" and dim_pieza < umbral_altillo)
+            # --- Sub-agrupar por (orient, tipo) ---
+            grupos: dict[tuple, list[dict]] = {}
+            for item in items_pieza:
+                key = (item["orient"], item["tipo"])
+                grupos.setdefault(key, []).append(item)
 
-            if es_altillo_pax:
-                # Cada cazoleta a 68 mm exactos del borde más cercano
-                for v in vals:
-                    dist_low = v - edge_low
-                    dist_high = edge_high - v
-                    nearest = min(dist_low, dist_high)
-                    if abs(nearest - borde_altillo) > _EPS_FP:
-                        errores.append(
-                            f"{tag_pieza} (altillo, {dim_pieza:.0f}mm): "
-                            f"cazoleta {eje}={v:.1f} a {nearest:.1f}mm del borde "
-                            f"(esperado: {borde_altillo:.0f}mm exactos)"
-                        )
-            else:
-                # Distancia entre cazoletas múltiplo exacto del paso
-                paso = paso_metod if tipo == "METOD" else paso_pax
-                for k in range(len(vals) - 1):
-                    dist = round(abs(vals[k + 1] - vals[k]), 4)
-                    if dist % paso != 0.0:
-                        nearest_n = round(dist / paso)
-                        desv = dist - nearest_n * paso
-                        errores.append(
-                            f"{tag_pieza}: distancia {dist}mm entre cazoletas "
-                            f"{eje}={vals[k]:.0f} y {eje}={vals[k + 1]:.0f} "
-                            f"no es múltiplo de {paso}mm "
-                            f"(más cercano {nearest_n}×{paso}={nearest_n * paso}mm, "
-                            f"desv. {desv:+.1f}mm)"
-                        )
+            # --- Verificar reglas por grupo ---
+            for (orient, tipo), items in grupos.items():
+                if orient == "V":
+                    eje, eje_perp = "Y", "X"
+                    edge_low, edge_high = bbox["ymin"], bbox["ymax"]
+                    vals = sorted(i["y"] for i in items)
+                else:
+                    eje, eje_perp = "X", "Y"
+                    edge_low, edge_high = bbox["xmin"], bbox["xmax"]
+                    vals = sorted(i["x"] for i in items)
+                dim_pieza = edge_high - edge_low
+
+                tag_pieza = (
+                    f"{dxf.nombre} — pieza "
+                    f"{bbox['xmax'] - bbox['xmin']:.0f}×{bbox['ymax'] - bbox['ymin']:.0f}mm "
+                    f"@ ({bbox['xmin']:.0f},{bbox['ymin']:.0f}) — bisagra {tipo}"
+                )
+
+                # Toda puerta debe tener ≥ 2 bisagras
+                if len(vals) < 2:
+                    errores.append(
+                        f"{tag_pieza}: solo 1 bisagra "
+                        f"({eje}={vals[0]:.0f}). Mínimo 2 por puerta."
+                    )
+                    continue
+
+                es_altillo_pax = (tipo == "PAX" and dim_pieza < umbral_altillo)
+
+                if es_altillo_pax:
+                    # Cada cazoleta a 68 mm exactos del borde más cercano
+                    for v in vals:
+                        dist_low = v - edge_low
+                        dist_high = edge_high - v
+                        nearest = min(dist_low, dist_high)
+                        if abs(nearest - borde_altillo) > _EPS_FP:
+                            errores.append(
+                                f"{tag_pieza} (altillo, {dim_pieza:.0f}mm): "
+                                f"cazoleta {eje}={v:.1f} a {nearest:.1f}mm del borde "
+                                f"(esperado: {borde_altillo:.0f}mm exactos)"
+                            )
+                else:
+                    # Distancia entre cazoletas múltiplo exacto del paso
+                    paso = paso_metod if tipo == "METOD" else paso_pax
+                    for k in range(len(vals) - 1):
+                        dist = round(abs(vals[k + 1] - vals[k]), 4)
+                        if dist % paso != 0.0:
+                            nearest_n = round(dist / paso)
+                            desv = dist - nearest_n * paso
+                            errores.append(
+                                f"{tag_pieza}: distancia {dist}mm entre cazoletas "
+                                f"{eje}={vals[k]:.0f} y {eje}={vals[k + 1]:.0f} "
+                                f"no es múltiplo de {paso}mm "
+                                f"(más cercano {nearest_n}×{paso}={nearest_n * paso}mm, "
+                                f"desv. {desv:+.1f}mm)"
+                            )
 
     if not algun_tablero_con_bisagras:
         return _skip(ID, DESC, "Sin circles 7-POCKET con companion en los DXFs", _GRUPO)

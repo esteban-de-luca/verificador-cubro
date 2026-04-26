@@ -285,6 +285,14 @@ bisagra_distancia:
   pax_altillo:
     umbral_mm: 700      # pieza < 700 mm en el eje de las bisagras → altillo
     borde_mm: 68        # cada cazoleta a 68 mm exactos del borde más cercano
+  # Excepciones: configuraciones de puerta con herrajes custom validadas
+  # manualmente por diseño. Cada entrada describe (ancho, alto, n_cazoletas).
+  # Si una pieza encaja, C-44 no la valida (otras reglas siguen aplicándose).
+  # Tolerancia ±2 mm en dimensiones para absorber ruido FP del DXF.
+  configuraciones_especiales:
+    - dim: [798, 256]
+      n_cazoletas: 4
+      descripcion: "Puerta custom con 4 bisagras (2x2) — herrajes especiales"
 
 # -----------------------------------------------------------------------------
 # DESBASTE TIRADOR (Check C-36)
