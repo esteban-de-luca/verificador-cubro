@@ -56,6 +56,15 @@ _TIPOS_GEOMETRIA = frozenset({
     "ELLIPSE", "SPLINE", "HATCH", "SOLID", "3DFACE",
 })
 
+#: Layers que delimitan el contorno de una pieza individual en el nesting.
+#: Usado por C-44 (distancia bisagras) para asociar cada cazoleta a su pieza.
+#: - 10_12-CUTEXT-EM5-Z18 → estándar (PLY/MDF)
+#: - 10_12-CONTORNO LACA  → MDF LAC con acabados no estándar (Agave, etc.)
+LAYERS_CONTORNO_PIEZA = frozenset({
+    "10_12-CUTEXT-EM5-Z18",
+    "10_12-CONTORNO LACA",
+})
+
 
 # ---------------------------------------------------------------------------
 # Parsing del nombre de archivo
@@ -97,6 +106,7 @@ def _parsear_entities_raw(contenido: str) -> list[dict]:
 
     Devuelve una lista de dicts con al menos 'tipo' (str) y 'layer' (str).
     Para TEXT/MTEXT también incluye 'texto' (str).
+    Para POLYLINE/LWPOLYLINE incluye 'vertices' (list[tuple[float, float]]).
     """
     lineas = contenido.splitlines()
     n = len(lineas)
@@ -123,8 +133,24 @@ def _parsear_entities_raw(contenido: str) -> list[dict]:
         fin = n
 
     # Recorrer la sección par a par (código, valor)
+    #
+    # Tres estados simultáneos:
+    #   cur  → entidad simple actualmente abierta (CIRCLE, TEXT, LWPOLYLINE…)
+    #   poly → POLYLINE compuesto con vértices via VERTEX (cerrado por SEQEND)
+    #   vert → VERTEX en curso dentro de poly
+    # LWPOLYLINE es una entidad simple "auto-contenida": acumula sus vértices
+    # como múltiples pares (10, 20) dentro del mismo bloque.
     entidades: list[dict] = []
-    ent_actual: dict | None = None
+    cur: dict | None = None
+    poly: dict | None = None
+    vert: dict | None = None
+    lw_x: float | None = None  # X pendiente de LWPOLYLINE esperando su Y
+
+    def _nuevo_simple(tipo: str) -> dict:
+        return {"tipo": tipo, "layer": "0", "texto": "",
+                "x": None, "y": None, "r": None, "vertices": [],
+                "extrusion_z": 1.0}
+
     i = inicio
     while i < fin - 1:
         codigo_str = lineas[i].strip()
@@ -136,37 +162,104 @@ def _parsear_entities_raw(contenido: str) -> list[dict]:
             continue
 
         if codigo == 0:
-            if ent_actual is not None:
-                entidades.append(ent_actual)
-            # VERTEX y SEQEND son subentidades de POLYLINE; las ignoramos
-            if valor in ("VERTEX", "SEQEND", "ENDSEC"):
-                ent_actual = None
-            else:
-                ent_actual = {"tipo": valor, "layer": "0", "texto": "",
-                              "x": None, "y": None, "r": None}
-        elif ent_actual is not None:
-            if codigo == 8:    # layer
-                ent_actual["layer"] = valor
-            elif codigo == 1:  # texto primario (TEXT / MTEXT)
-                ent_actual["texto"] = valor
-            elif codigo == 10:  # coordenada X (CIRCLE, ARC…)
-                try:
-                    ent_actual["x"] = float(valor)
-                except ValueError:
-                    pass
-            elif codigo == 20:  # coordenada Y
-                try:
-                    ent_actual["y"] = float(valor)
-                except ValueError:
-                    pass
-            elif codigo == 40:  # radio (CIRCLE) o primera magnitud
-                try:
-                    ent_actual["r"] = float(valor)
-                except ValueError:
-                    pass
+            # Cerrar lo que estuviera abierto
+            if vert is not None:
+                if vert["x"] is not None and vert["y"] is not None and poly is not None:
+                    poly["vertices"].append((vert["x"], vert["y"]))
+                vert = None
+            elif cur is not None and poly is None:
+                entidades.append(cur)
+                cur = None
 
-    if ent_actual is not None:
-        entidades.append(ent_actual)
+            # Abrir nueva entidad según su tipo
+            if valor == "POLYLINE":
+                if poly is not None:  # POLYLINE no cerrado: forzar cierre
+                    entidades.append(poly)
+                poly = _nuevo_simple("POLYLINE")
+                cur = None
+                lw_x = None
+            elif valor == "VERTEX":
+                if poly is not None:
+                    vert = {"x": None, "y": None}
+                # VERTEX huérfano fuera de POLYLINE: ignorar
+            elif valor == "SEQEND":
+                if poly is not None:
+                    entidades.append(poly)
+                    poly = None
+            elif valor == "ENDSEC":
+                if poly is not None:
+                    entidades.append(poly)
+                    poly = None
+                if cur is not None:
+                    entidades.append(cur)
+                    cur = None
+                break
+            elif valor == "LWPOLYLINE":
+                if poly is not None:
+                    entidades.append(poly)
+                    poly = None
+                cur = _nuevo_simple("LWPOLYLINE")
+                lw_x = None
+            else:
+                if poly is not None:  # SEQEND faltante: cerrar y seguir
+                    entidades.append(poly)
+                    poly = None
+                cur = _nuevo_simple(valor)
+                lw_x = None
+        else:
+            # Group code dentro de una entidad
+            if vert is not None:
+                if codigo == 10:
+                    try: vert["x"] = float(valor)
+                    except ValueError: pass
+                elif codigo == 20:
+                    try: vert["y"] = float(valor)
+                    except ValueError: pass
+            elif poly is not None:
+                if codigo == 8:
+                    poly["layer"] = valor
+                # codes 66/70: flags, ignoramos
+            elif cur is not None:
+                if codigo == 8:
+                    cur["layer"] = valor
+                elif codigo == 1:
+                    cur["texto"] = valor
+                elif codigo == 10:
+                    if cur["tipo"] == "LWPOLYLINE":
+                        try: lw_x = float(valor)
+                        except ValueError: lw_x = None
+                    else:
+                        try: cur["x"] = float(valor)
+                        except ValueError: pass
+                elif codigo == 20:
+                    if cur["tipo"] == "LWPOLYLINE":
+                        if lw_x is not None:
+                            try:
+                                cur["vertices"].append((lw_x, float(valor)))
+                            except ValueError:
+                                pass
+                            lw_x = None
+                    else:
+                        try: cur["y"] = float(valor)
+                        except ValueError: pass
+                elif codigo == 40:
+                    try: cur["r"] = float(valor)
+                    except ValueError: pass
+                elif codigo == 230:  # Z de la dirección de extrusión
+                    # 230=-1.0 → entidad reflejada (típicamente representación
+                    # de cara trasera para mecanizado a doble cara). El check
+                    # C-44 ignora estos duplicados.
+                    try: cur["extrusion_z"] = float(valor)
+                    except ValueError: pass
+
+    # Cierre final por seguridad (DXFs sin ENDSEC explícito)
+    if vert is not None and poly is not None:
+        if vert["x"] is not None and vert["y"] is not None:
+            poly["vertices"].append((vert["x"], vert["y"]))
+    if poly is not None:
+        entidades.append(poly)
+    elif cur is not None:
+        entidades.append(cur)
 
     return entidades
 
@@ -203,6 +296,11 @@ def _extraer_circulos(entidades: list[dict]) -> list[dict]:
     """
     Devuelve los círculos con coordenadas válidas para checks geométricos (C-44).
     Cada entrada: {'layer': str, 'x': float, 'y': float, 'r': float}.
+
+    Filtra círculos con dirección de extrusión Z=-1 (entidades reflejadas
+    que CUBRO añade para representar la cara trasera del panel en
+    mecanizados a doble cara). Esos son duplicados visuales del mismo
+    agujero físico — no se deben contar dos veces.
     """
     return [
         {"layer": e["layer"], "x": e["x"], "y": e["y"], "r": e["r"]}
@@ -211,7 +309,44 @@ def _extraer_circulos(entidades: list[dict]) -> list[dict]:
         and e.get("x") is not None
         and e.get("y") is not None
         and e.get("r") is not None
+        and e.get("extrusion_z", 1.0) >= 0   # excluir cara trasera (Z=-1)
     ]
+
+
+def _extraer_contornos_pieza(
+    entidades: list[dict],
+    layers_contorno: frozenset[str] = LAYERS_CONTORNO_PIEZA,
+) -> list[dict]:
+    """
+    Extrae bounding boxes de las polilíneas que delimitan piezas individuales.
+
+    Cada pieza nesteada en el tablero está rodeada por una POLYLINE o
+    LWPOLYLINE en una de las layers de contorno. Para C-44 solo necesitamos
+    el rectángulo envolvente (xmin, xmax, ymin, ymax) — las piezas son
+    rectangulares y la cazoleta debe caer dentro de ese rectángulo para
+    pertenecer a la pieza.
+
+    Cada entrada devuelta: {'layer', 'xmin', 'xmax', 'ymin', 'ymax'}.
+    """
+    contornos: list[dict] = []
+    for e in entidades:
+        if e["tipo"] not in ("POLYLINE", "LWPOLYLINE"):
+            continue
+        if e["layer"] not in layers_contorno:
+            continue
+        vertices = e.get("vertices") or []
+        if not vertices:
+            continue
+        xs = [v[0] for v in vertices]
+        ys = [v[1] for v in vertices]
+        contornos.append({
+            "layer": e["layer"],
+            "xmin": min(xs),
+            "xmax": max(xs),
+            "ymin": min(ys),
+            "ymax": max(ys),
+        })
+    return contornos
 
 
 def _extraer_ids_piezas(entidades: list[dict]) -> list[str]:
@@ -269,6 +404,7 @@ def leer_dxf(origen: BinaryIO | Path | str, nombre: str | None = None) -> DXFDoc
     layers, layers_con_geometria, conteos_layer = _extraer_layers_y_conteos(entidades)
     ids_piezas = _extraer_ids_piezas(entidades)
     circulos = _extraer_circulos(entidades)
+    piezas_contorno = _extraer_contornos_pieza(entidades)
 
     return DXFDoc(
         nombre=nombre,
@@ -281,6 +417,7 @@ def leer_dxf(origen: BinaryIO | Path | str, nombre: str | None = None) -> DXFDoc
         conteos_layer=conteos_layer,
         ids_piezas=ids_piezas,
         circulos=circulos,
+        piezas_contorno=piezas_contorno,
     )
 
 

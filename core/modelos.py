@@ -165,6 +165,13 @@ class DXFDoc:
     #: Cada dict: {'layer': str, 'x': float, 'y': float, 'r': float}.
     circulos: list[dict] = field(default_factory=list)
 
+    #: Bounding boxes de las piezas individuales nesteadas en el tablero,
+    #: extraídas de las layers de contorno (CUTEXT / CONTORNO LACA). Usado
+    #: por C-44 para asociar cada cazoleta a la pieza que la contiene.
+    #: Cada dict: {'layer': str, 'xmin': float, 'xmax': float,
+    #:             'ymin': float, 'ymax': float}.
+    piezas_contorno: list[dict] = field(default_factory=list)
+
     @property
     def clave_material(self) -> str:
         return f"{self.material}_{self.gama}_{self.acabado}"

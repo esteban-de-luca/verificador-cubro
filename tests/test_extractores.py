@@ -452,6 +452,142 @@ class TestLeerDXF:
         assert len(resultado) == 1
 
 
+class TestLeerDXFContornosPieza:
+    """Tests del parser de polilíneas para extraer contornos de pieza (C-44)."""
+
+    def _dxf_con_polilineas(self, polilineas: list[tuple[str, str, list[tuple[float, float]]]]) -> io.BytesIO:
+        """
+        Construye un DXF con las polilíneas dadas.
+
+        Args:
+            polilineas: lista de (tipo, layer, vertices) donde
+                        tipo ∈ {"polyline", "lwpolyline"}.
+        """
+        doc = ezdxf.new(dxfversion="R2010")
+        msp = doc.modelspace()
+        for tipo, layer, vertices in polilineas:
+            if layer not in doc.layers:
+                doc.layers.add(layer)
+            if tipo == "polyline":
+                msp.add_polyline2d(vertices, dxfattribs={"layer": layer})
+            elif tipo == "lwpolyline":
+                msp.add_lwpolyline(vertices, dxfattribs={"layer": layer})
+            else:
+                raise ValueError(f"tipo desconocido: {tipo}")
+        stream = io.StringIO()
+        doc.write(stream)
+        buf = io.BytesIO(stream.getvalue().encode("cp1252", errors="replace"))
+        buf.seek(0)
+        return buf
+
+    def test_polyline_cutext_extrae_bbox(self):
+        """PASS: POLYLINE2D en layer CUTEXT → bbox correcto en piezas_contorno."""
+        from core.extractor_dxf import leer_dxf
+        buf = self._dxf_con_polilineas([
+            ("polyline", "10_12-CUTEXT-EM5-Z18",
+             [(10.0, -27510.0), (2360.0, -27510.0),
+              (2360.0, -27756.0), (10.0, -27756.0)]),
+        ])
+        doc = leer_dxf(buf, nombre="EU21742_X_MDF_WOOD_ROBLE_T11.dxf")
+        assert len(doc.piezas_contorno) == 1
+        c = doc.piezas_contorno[0]
+        assert c["layer"] == "10_12-CUTEXT-EM5-Z18"
+        assert c["xmin"] == pytest.approx(10.0)
+        assert c["xmax"] == pytest.approx(2360.0)
+        assert c["ymin"] == pytest.approx(-27756.0)
+        assert c["ymax"] == pytest.approx(-27510.0)
+
+    def test_lwpolyline_contorno_laca_extrae_bbox(self):
+        """PASS: LWPOLYLINE en layer CONTORNO LACA → bbox correcto."""
+        from core.extractor_dxf import leer_dxf
+        buf = self._dxf_con_polilineas([
+            ("lwpolyline", "10_12-CONTORNO LACA",
+             [(2375.0, -27510.0), (2851.0, -27510.0),
+              (2851.0, -27756.0), (2375.0, -27756.0)]),
+        ])
+        doc = leer_dxf(buf, nombre="EU21742_X_MDF_LACA_AGAVE_T1.dxf")
+        assert len(doc.piezas_contorno) == 1
+        c = doc.piezas_contorno[0]
+        assert c["layer"] == "10_12-CONTORNO LACA"
+        assert c["xmin"] == pytest.approx(2375.0)
+        assert c["xmax"] == pytest.approx(2851.0)
+
+    def test_polilineas_de_otras_layers_se_ignoran(self):
+        """PASS: polilíneas en layers no-contorno NO entran en piezas_contorno."""
+        from core.extractor_dxf import leer_dxf
+        buf = self._dxf_con_polilineas([
+            ("polyline", "9_11-HANDCUT-EM5-Z18",
+             [(0.0, 0.0), (100.0, 0.0), (100.0, 50.0), (0.0, 50.0)]),
+        ])
+        doc = leer_dxf(buf, nombre="EU21742_X_MDF_WOOD_ROBLE_T1.dxf")
+        assert doc.piezas_contorno == []
+
+    def test_dxf_sin_polilineas_devuelve_lista_vacia(self):
+        """PASS: DXF sin polilíneas → piezas_contorno vacía."""
+        from core.extractor_dxf import leer_dxf
+        doc = ezdxf.new(dxfversion="R2010")
+        msp = doc.modelspace()
+        msp.add_circle((100, 100), radius=10,
+                       dxfattribs={"layer": "7-POCKET-EM5-Z14"})
+        if "7-POCKET-EM5-Z14" not in doc.layers:
+            doc.layers.add("7-POCKET-EM5-Z14")
+        stream = io.StringIO()
+        doc.write(stream)
+        buf = io.BytesIO(stream.getvalue().encode("cp1252", errors="replace"))
+        buf.seek(0)
+
+        from core.extractor_dxf import leer_dxf as leer_dxf_fn
+        d = leer_dxf_fn(buf, nombre="EU21742_X_PLY_LAMINADO_PALE_T1.dxf")
+        assert d.piezas_contorno == []
+
+    def test_multiples_contornos_en_un_dxf(self):
+        """PASS: 2 piezas en el mismo tablero → 2 bboxes en piezas_contorno."""
+        from core.extractor_dxf import leer_dxf
+        buf = self._dxf_con_polilineas([
+            ("polyline", "10_12-CUTEXT-EM5-Z18",
+             [(10.0, -27510.0), (2360.0, -27510.0),
+              (2360.0, -27756.0), (10.0, -27756.0)]),
+            ("lwpolyline", "10_12-CUTEXT-EM5-Z18",
+             [(2375.0, -27510.0), (2851.0, -27510.0),
+              (2851.0, -27756.0), (2375.0, -27756.0)]),
+        ])
+        doc = leer_dxf(buf, nombre="EU21742_X_MDF_WOOD_ROBLE_T11.dxf")
+        assert len(doc.piezas_contorno) == 2
+        # ordenamos para no depender de orden de inserción
+        anchuras = sorted(c["xmax"] - c["xmin"] for c in doc.piezas_contorno)
+        assert anchuras[0] == pytest.approx(476.0)
+        assert anchuras[1] == pytest.approx(2350.0)
+
+    def test_circulos_y_polilineas_coexisten(self):
+        """PASS: extractor procesa círculos y polilíneas en el mismo DXF
+        sin que uno corrompa al otro (regresión: el parser maneja la
+        transición POLYLINE→VERTEX→SEQEND→CIRCLE correctamente)."""
+        from core.extractor_dxf import leer_dxf
+        doc = ezdxf.new(dxfversion="R2010")
+        msp = doc.modelspace()
+        for layer in ("10_12-CUTEXT-EM5-Z18", "7-POCKET-EM5-Z14"):
+            if layer not in doc.layers:
+                doc.layers.add(layer)
+        msp.add_polyline2d(
+            [(0.0, 0.0), (1000.0, 0.0), (1000.0, 500.0), (0.0, 500.0)],
+            dxfattribs={"layer": "10_12-CUTEXT-EM5-Z18"},
+        )
+        msp.add_circle((250.0, 250.0), radius=17.5,
+                       dxfattribs={"layer": "7-POCKET-EM5-Z14"})
+        msp.add_circle((750.0, 250.0), radius=17.5,
+                       dxfattribs={"layer": "7-POCKET-EM5-Z14"})
+        stream = io.StringIO()
+        doc.write(stream)
+        buf = io.BytesIO(stream.getvalue().encode("cp1252", errors="replace"))
+        buf.seek(0)
+
+        d = leer_dxf(buf, nombre="EU21742_X_MDF_WOOD_ROBLE_T1.dxf")
+        assert len(d.piezas_contorno) == 1
+        assert len(d.circulos) == 2
+        assert d.piezas_contorno[0]["xmax"] == pytest.approx(1000.0)
+        assert {(c["x"], c["y"]) for c in d.circulos} == {(250.0, 250.0), (750.0, 250.0)}
+
+
 # ===========================================================================
 # Tests de extractor_ot
 # ===========================================================================

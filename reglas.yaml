@@ -262,7 +262,11 @@ layers:
 
 # -----------------------------------------------------------------------------
 # DISTANCIA BISAGRAS (Check C-44)
-# Paso METOD = 50 mm, paso PAX = 32 mm. Tolerancia: cero.
+# - METOD: distancia entre cazoletas múltiplo exacto de 50 mm.
+# - PAX puerta normal (pieza ≥ 700 mm): múltiplo exacto de 32 mm.
+# - PAX altillo (pieza < 700 mm): cazoleta a 68 mm exactos del borde.
+# - Pieza con 1 sola cazoleta: FAIL (toda puerta lleva ≥ 2 bisagras).
+# Tolerancia: cero en todos los casos.
 # -----------------------------------------------------------------------------
 bisagra_distancia:
   layer_7pocket: "7-POCKET-EM5-Z14"        # agujero principal (común METOD y PAX)
@@ -270,6 +274,17 @@ bisagra_distancia:
   layer_6pocket_pax: "6A-POCKET-EM5-Z14_PAX"  # companion PAX → paso 32 mm
   paso_metod: 50
   paso_pax: 32
+  # Layers que delimitan el contorno de cada pieza individual en el nesting.
+  # Necesarias para asociar cada cazoleta a su pieza (point-in-bbox).
+  layers_contorno_pieza:
+    - "10_12-CUTEXT-EM5-Z18"   # estándar (PLY/MDF)
+    - "10_12-CONTORNO LACA"    # MDF LAC con acabados no estándar (Agave, etc.)
+  # Régimen especial para altillos PAX: piezas con dimensión menor en el eje
+  # de las bisagras < umbral_mm → la cazoleta debe estar a borde_mm exactos
+  # del borde de la pieza (no aplica el múltiplo de 32 entre cazoletas).
+  pax_altillo:
+    umbral_mm: 700      # pieza < 700 mm en el eje de las bisagras → altillo
+    borde_mm: 68        # cada cazoleta a 68 mm exactos del borde más cercano
 
 # -----------------------------------------------------------------------------
 # DESBASTE TIRADOR (Check C-36)

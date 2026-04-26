@@ -618,12 +618,32 @@ def _circulo(layer: str, x: float, y: float, r: float = 17.5) -> dict:
     return {"layer": layer, "x": x, "y": y, "r": r}
 
 
-def _dxf_con_circulos(circulos: list[dict]) -> "DXFDoc":
-    """DXFDoc mínimo con la lista de círculos indicada."""
+def _bbox(xmin, xmax, ymin, ymax, layer="10_12-CUTEXT-EM5-Z18") -> dict:
+    """Bounding box de pieza (contorno CUTEXT o CONTORNO LACA)."""
+    return {"layer": layer, "xmin": xmin, "xmax": xmax,
+            "ymin": ymin, "ymax": ymax}
+
+
+def _bbox_envolvente(circulos: list[dict], margen: float = 100) -> dict:
+    """Bbox que envuelve todos los círculos con `margen` mm de margen extra."""
+    xs = [c["x"] for c in circulos]
+    ys = [c["y"] for c in circulos]
+    return _bbox(min(xs) - margen, max(xs) + margen,
+                 min(ys) - margen, max(ys) + margen)
+
+
+def _dxf_con_circulos(circulos: list[dict],
+                      piezas_contorno: list[dict] | None = None) -> "DXFDoc":
+    """DXFDoc mínimo. Si piezas_contorno=None, genera un único bbox envolvente
+    de todos los círculos (con 100 mm de margen) para que cada cazoleta tenga
+    pieza asignada."""
+    if piezas_contorno is None:
+        piezas_contorno = [_bbox_envolvente(circulos)] if circulos else []
     return DXFDoc(
         nombre="TEST_MDF_LACA_BLANCO_T1.dxf", tablero_num=1,
         material="MDF", gama="LAC", acabado="Blanco",
         circulos=circulos,
+        piezas_contorno=piezas_contorno,
     )
 
 
@@ -733,8 +753,8 @@ class TestC44:
 
     def test_pass_dos_puertas_mismo_y_nesting(self, reglas):
         # Regresión T2: 2 puertas METOD horizontales en el mismo Y.
-        # La distancia inter-puerta (939mm) no es múltiplo de 50 pero NO es
-        # un error — es el hueco de nesting entre piezas distintas.
+        # Cada puerta tiene su propio contorno; el hueco inter-puerta (939mm)
+        # nunca se mide porque las cazoletas se agrupan POR PIEZA.
         # Intra-puerta: 700mm = 14×50 ✓ en cada puerta.
         circs = [
             # Puerta A
@@ -753,5 +773,130 @@ class TestC44:
             _circulo(L6M, -4848.92, -2881.5, r=4.0),
             _circulo(L6M, -4803.92, -2881.5, r=4.0),
         ]
-        r = check_distancia_bisagras([_dxf_con_circulos(circs)], reglas)
+        contornos = [
+            _bbox(-7250, -6380, -2950, -2830),  # Puerta A
+            _bbox(-5610, -4740, -2950, -2830),  # Puerta B
+        ]
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
         assert r.resultado == "PASS", r.detalle
+
+    # --- PAX altillo (pieza < 700mm): cazoleta a 68mm exactos del borde ---
+    def test_pass_pax_altillo_cazoletas_a_68mm(self, reglas):
+        # Altillo PAX 476mm horizontal: cazoletas a 68mm de cada borde.
+        # Distancia entre cazoletas = 476 - 68 - 68 = 340mm (NO múltiplo de 32),
+        # pero la regla altillo solo exige los 68mm desde el borde.
+        circs = [
+            _circulo(L7, 2443.0, -27733.2),  # 68mm de xmin=2375
+            _circulo(L7, 2783.0, -27733.2),  # 68mm de xmax=2851
+            # Companions PAX (offset dX≈22.5, dY≈9.1 → orient H)
+            _circulo(L6P, 2465.5, -27724.1, r=2.5),
+            _circulo(L6P, 2420.5, -27724.1, r=2.5),
+            _circulo(L6P, 2805.5, -27724.1, r=2.5),
+            _circulo(L6P, 2760.5, -27724.1, r=2.5),
+        ]
+        contornos = [_bbox(2375, 2851, -27756, -27510)]  # 476×246mm
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
+        assert r.resultado == "PASS", r.detalle
+
+    def test_fail_pax_altillo_cazoleta_no_a_68mm(self, reglas):
+        # Altillo PAX 476mm con una cazoleta a 60mm del borde (no 68).
+        circs = [
+            _circulo(L7, 2435.0, -27733.2),  # 60mm de xmin=2375 → ✗
+            _circulo(L7, 2783.0, -27733.2),  # 68mm de xmax=2851 ✓
+            _circulo(L6P, 2457.5, -27724.1, r=2.5),
+            _circulo(L6P, 2412.5, -27724.1, r=2.5),
+            _circulo(L6P, 2805.5, -27724.1, r=2.5),
+            _circulo(L6P, 2760.5, -27724.1, r=2.5),
+        ]
+        contornos = [_bbox(2375, 2851, -27756, -27510)]
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "60" in r.detalle and "68" in r.detalle
+
+    def test_pass_pax_altillo_contorno_laca(self, reglas):
+        # Altillo PAX en una pieza con contorno layer "10_12-CONTORNO LACA"
+        # (no estándar: e.g. acabado Agave). Misma regla aplica.
+        circs = [
+            _circulo(L7, 2443.0, -27733.2),
+            _circulo(L7, 2783.0, -27733.2),
+            _circulo(L6P, 2465.5, -27724.1, r=2.5),
+            _circulo(L6P, 2420.5, -27724.1, r=2.5),
+            _circulo(L6P, 2805.5, -27724.1, r=2.5),
+            _circulo(L6P, 2760.5, -27724.1, r=2.5),
+        ]
+        contornos = [_bbox(2375, 2851, -27756, -27510,
+                           layer="10_12-CONTORNO LACA")]
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
+        assert r.resultado == "PASS", r.detalle
+
+    def test_pass_convivencia_altillo_y_puerta_grande(self, reglas):
+        # Caso real EU-21742: convivencia de pieza grande PAX (cazoletas a
+        # múltiplos de 32) y altillo PAX (cazoletas a 68mm del borde) en
+        # el mismo tablero, alineados en el mismo Y.
+        circs = [
+            # Pieza grande (X=10..2360, 2350mm wide): 3 cazoletas
+            _circulo(L7, 1117.0, -27733.2),
+            _circulo(L7, 1309.0, -27733.2),  # 192 = 6×32
+            _circulo(L7, 2237.0, -27733.2),  # 928 = 29×32
+            # Altillo (X=2375..2851, 476mm wide): 2 cazoletas
+            _circulo(L7, 2443.0, -27733.2),  # 68mm del borde xmin=2375
+            _circulo(L7, 2783.0, -27733.2),  # 68mm del borde xmax=2851
+            # Companions PAX (orient H) — dummies suficientes para clasificar
+            _circulo(L6P, 1094.5, -27724.1, r=2.5),
+            _circulo(L6P, 1139.5, -27724.1, r=2.5),
+            _circulo(L6P, 1286.5, -27724.1, r=2.5),
+            _circulo(L6P, 1331.5, -27724.1, r=2.5),
+            _circulo(L6P, 2214.5, -27724.1, r=2.5),
+            _circulo(L6P, 2259.5, -27724.1, r=2.5),
+            _circulo(L6P, 2420.5, -27724.1, r=2.5),
+            _circulo(L6P, 2465.5, -27724.1, r=2.5),
+            _circulo(L6P, 2760.5, -27724.1, r=2.5),
+            _circulo(L6P, 2805.5, -27724.1, r=2.5),
+        ]
+        contornos = [
+            _bbox(10, 2360, -27756, -27510),    # pieza grande
+            _bbox(2375, 2851, -27756, -27510),  # altillo
+        ]
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
+        assert r.resultado == "PASS", r.detalle
+
+    def test_fail_pieza_con_una_sola_bisagra(self, reglas):
+        # Una pieza con UNA sola cazoleta es siempre FAIL (toda puerta
+        # debe tener ≥ 2 bisagras).
+        circs = [
+            _circulo(L7, 1117.0, -27733.2),
+            _circulo(L6P, 1094.5, -27724.1, r=2.5),
+            _circulo(L6P, 1139.5, -27724.1, r=2.5),
+        ]
+        contornos = [_bbox(1000, 2000, -27800, -27500)]
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "1 bisagra" in r.detalle.lower() or "solo 1" in r.detalle.lower()
+
+    def test_fail_bisagra_sin_pieza_asignada(self, reglas):
+        # Cazoleta fuera del contorno → FAIL.
+        circs = [
+            _circulo(L7, 9999.0, -27733.2),  # fuera del bbox
+            _circulo(L6P, 9976.5, -27724.1, r=2.5),
+            _circulo(L6P, 10021.5, -27724.1, r=2.5),
+        ]
+        contornos = [_bbox(0, 2000, -27800, -27500)]
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
+        assert r.resultado == "FAIL"
+        assert "sin pieza asignada" in r.detalle
