@@ -30,7 +30,7 @@ _PROPS = {
     "cliente":         "Cliente",           # rich_text
     "responsable":     "Responsable",       # select
     "semana":          "Semana",            # rich_text
-    "estado":          "Estado",            # select: BLOQUEADO | ADVERTENCIAS | APROBADO
+    "estado":          "Estado",            # select: BLOQUEADO | ADVERTENCIAS | OK
     "n_errores":       "Errores",           # number
     "n_avisos":        "Avisos",            # number
     "n_pass":          "PASS",              # number

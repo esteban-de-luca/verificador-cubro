@@ -52,7 +52,7 @@ def get_notion_writer() -> NotionWriter | None:
 _COLOR = {
     "BLOQUEADO":    "#e53935",
     "ADVERTENCIAS": "#fb8c00",
-    "APROBADO":     "#43a047",
+    "OK":           "#43a047",
     "PENDIENTE":    "#757575",
     "PASS": "#43a047",
     "WARN": "#fb8c00",
@@ -62,7 +62,7 @@ _COLOR = {
 _ICONO = {
     "BLOQUEADO":    "🔴",
     "ADVERTENCIAS": "🟠",
-    "APROBADO":     "🟢",
+    "OK":           "🟢",
     "PENDIENTE":    "⚪",
     "PASS": "✅",
     "WARN": "⚠️",
@@ -72,7 +72,7 @@ _ICONO = {
 _ESTADO_A_CLAVE = {
     "BLOQUEADO": "bloqueado",
     "ADVERTENCIAS": "advertencias",
-    "APROBADO": "aprobado",
+    "OK": "aprobado",
 }
 
 # ---------------------------------------------------------------------------
@@ -179,7 +179,7 @@ def _modal_mover_carpintek(folder_id: str, nombre_limpio: str):
         f"¿Mover **{nombre_limpio}** a la carpeta Carpintek?\n\n"
         "Esta acción elimina la carpeta de la zona de cuarentena."
     )
-    st.error("Acción irreversible — asegúrate de que el informe es APROBADO.", icon="🔒")
+    st.error("Acción irreversible — asegúrate de que el informe es OK.", icon="🔒")
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Mover", type="primary", use_container_width=True):
@@ -461,7 +461,7 @@ def _panel_accion(proyecto: dict, informe: InformeFinal) -> None:
             url=_url_drive(folder_id),
             use_container_width=True,
         )
-        if estado_informe == "APROBADO":
+        if estado_informe == "OK":
             if st.button(
                 "📦 Mover a Carpintek →",
                 use_container_width=True,

@@ -131,7 +131,7 @@ class TestInformeFinal:
 
     def test_aprobado_sin_errores(self):
         cr = CheckResult("C-00", "x", "PASS", "ok", False, "Inventario")
-        assert self._informe([cr]).estado_global == "APROBADO"
+        assert self._informe([cr]).estado_global == "OK"
 
     def test_bloqueado_con_fail_bloqueante(self):
         cr = CheckResult("C-15", "x", "FAIL", "error", True, "Material")

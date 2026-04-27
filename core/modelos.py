@@ -205,13 +205,13 @@ class InformeFinal:
         """
         BLOQUEADO   si hay al menos 1 check FAIL con bloquea=True.
         ADVERTENCIAS si hay WARNs pero ningún FAIL bloqueante.
-        APROBADO    si todos los checks son PASS o SKIP.
+        OK          si todos los checks son PASS o SKIP.
         """
         if self.errores_criticos:
             return "BLOQUEADO"
         if self.advertencias:
             return "ADVERTENCIAS"
-        return "APROBADO"
+        return "OK"
 
     @property
     def bloquea(self) -> bool:

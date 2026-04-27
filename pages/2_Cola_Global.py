@@ -454,7 +454,7 @@ def _verificar_cola(seleccionados: list[dict], progress_ph: Any) -> None:
 # ZONA 2 — Resultados
 # ---------------------------------------------------------------------------
 
-_SEVERIDAD = {"BLOQUEADO": 0, "ADVERTENCIAS": 1, "APROBADO": 2}
+_SEVERIDAD = {"BLOQUEADO": 0, "ADVERTENCIAS": 1, "OK": 2}
 
 
 def _orden_severidad(r: dict) -> int:
@@ -541,7 +541,7 @@ def _render_resultado(r: dict) -> None:
                 if st.button(
                     f"Aplicar [{estado}]",
                     key=f"btn_estado_{proyecto['id']}",
-                    type="primary" if estado == "APROBADO" else "secondary",
+                    type="primary" if estado == "OK" else "secondary",
                     use_container_width=True,
                 ):
                     with st.spinner("Aplicando en Drive…"):
@@ -573,7 +573,7 @@ def _render_resultado(r: dict) -> None:
 
 
 def _render_zona_resultados(resultados: list[dict]) -> None:
-    conteo = {"BLOQUEADO": 0, "ADVERTENCIAS": 0, "APROBADO": 0, "ERROR": 0}
+    conteo = {"BLOQUEADO": 0, "ADVERTENCIAS": 0, "OK": 0, "ERROR": 0}
     for r in resultados:
         if r["error"]:
             conteo["ERROR"] += 1
@@ -587,14 +587,14 @@ def _render_zona_resultados(resultados: list[dict]) -> None:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("🔴 Bloqueados", conteo["BLOQUEADO"])
     c2.metric("🟠 Advertencias", conteo["ADVERTENCIAS"])
-    c3.metric("🟢 Aprobados", conteo["APROBADO"])
+    c3.metric("🟢 Aprobados", conteo["OK"])
     c4.metric("💥 Errores", conteo["ERROR"])
 
     aprobados_pendientes = [
         r for r in resultados
         if not r["error"]
-        and r["informe"].estado_global == "APROBADO"
-        and r["proyecto"].get("estado") != "APROBADO"
+        and r["informe"].estado_global == "OK"
+        and r["proyecto"].get("estado") != "OK"
     ]
     col_bulk, col_clean = st.columns([3, 1])
     with col_bulk:
@@ -609,7 +609,7 @@ def _render_zona_resultados(resultados: list[dict]) -> None:
                 with st.spinner("Aplicando estado en Drive…"):
                     for r in aprobados_pendientes:
                         try:
-                            _aplicar_estado_a_drive(r, "APROBADO")
+                            _aplicar_estado_a_drive(r, "OK")
                         except Exception as exc:
                             fallos.append(f"{r['proyecto']['nombre_limpio']}: {exc}")
                 _cache_invalidate()

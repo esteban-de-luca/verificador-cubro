@@ -367,7 +367,7 @@ class TestEstadoGlobal:
 
     def test_aprobado_sin_errores(self):
         inf = self._informe_con([self._pass("C-00"), self._pass("C-01")])
-        assert inf.estado_global == "APROBADO"
+        assert inf.estado_global == "OK"
 
     def test_bloqueado_con_fail_bloqueante(self):
         inf = self._informe_con([self._fail_bloquea(), self._pass()])
@@ -385,8 +385,8 @@ class TestEstadoGlobal:
         # Pero sí es FAIL → ¿es advertencia? No: es_advertencia solo para WARN.
         # El informe tendrá FAIL pero no bloquea → estado = ADVERTENCIAS no, sino...
         # Mirando la lógica: errores_criticos = FAIL+bloquea; advertencias = WARN
-        # FAIL sin bloquea no entra en ninguno → APROBADO si no hay WARNs
-        assert inf.estado_global == "APROBADO"  # FAIL sin bloquea = no bloquea y no es WARN
+        # FAIL sin bloquea no entra en ninguno → OK si no hay WARNs
+        assert inf.estado_global == "OK"  # FAIL sin bloquea = no bloquea y no es WARN
 
     def test_bloqueado_gana_sobre_warn(self):
         inf = self._informe_con([self._fail_bloquea(), self._warn()])

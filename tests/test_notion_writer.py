@@ -30,14 +30,14 @@ def _check(id="C-00", resultado="PASS", bloquea=True, grupo="Inventario", detall
     )
 
 
-def _informe(estado="APROBADO") -> InformeFinal:
+def _informe(estado="OK") -> InformeFinal:
     inf = InformeFinal(
         id_proyecto="EU-21822",
         cliente="Sabine Jennes",
         responsable="Esteban",
         semana="Semana 18",
     )
-    if estado == "APROBADO":
+    if estado == "OK":
         inf.checks = [_check("C-00", "PASS"), _check("C-01", "PASS"),
                       _check("C-02", "SKIP", bloquea=False, grupo="Inventario")]
     elif estado == "ADVERTENCIAS":
@@ -79,7 +79,7 @@ class TestEscribirVerificacion:
 
     def test_crea_pagina_cuando_no_existe(self):
         writer, mock_client = _writer_con_mock(buscar_resultado=None)
-        url = writer.escribir_verificacion(_informe("APROBADO"))
+        url = writer.escribir_verificacion(_informe("OK"))
         mock_client.pages.create.assert_called_once()
         mock_client.pages.update.assert_not_called()
         assert url == "https://notion.so/nueva-page-id"
@@ -128,13 +128,13 @@ class TestConstruirPropiedades:
 
     def test_titulo_incluye_id_y_cliente(self):
         writer, _ = _writer_con_mock()
-        props = writer._construir_propiedades(_informe("APROBADO"))
+        props = writer._construir_propiedades(_informe("OK"))
         titulo = props[_PROPS["nombre"]]["title"][0]["text"]["content"]
         assert "EU-21822" in titulo
         assert "Sabine Jennes" in titulo
 
     def test_titulo_sin_cliente(self):
-        inf = _informe("APROBADO")
+        inf = _informe("OK")
         inf.cliente = ""
         writer, _ = _writer_con_mock()
         props = writer._construir_propiedades(inf)
@@ -142,14 +142,14 @@ class TestConstruirPropiedades:
         assert "EU-21822" in titulo
 
     def test_estado_select_correcto(self):
-        for estado in ("APROBADO", "ADVERTENCIAS", "BLOQUEADO"):
+        for estado in ("OK", "ADVERTENCIAS", "BLOQUEADO"):
             writer, _ = _writer_con_mock()
             props = writer._construir_propiedades(_informe(estado))
             assert props[_PROPS["estado"]]["select"]["name"] == estado
 
     def test_contadores_correctos_aprobado(self):
         writer, _ = _writer_con_mock()
-        props = writer._construir_propiedades(_informe("APROBADO"))
+        props = writer._construir_propiedades(_informe("OK"))
         assert props[_PROPS["n_errores"]]["number"] == 0
         assert props[_PROPS["n_avisos"]]["number"] == 0
         assert props[_PROPS["n_pass"]]["number"] == 2
@@ -187,7 +187,7 @@ class TestConstruirPropiedades:
 
     def test_notas_vacias_si_sin_c63(self):
         writer, _ = _writer_con_mock()
-        props = writer._construir_propiedades(_informe("APROBADO"))
+        props = writer._construir_propiedades(_informe("OK"))
         notas = props[_PROPS["notas"]]["rich_text"][0]["text"]["content"]
         assert notas == ""
 
@@ -210,7 +210,7 @@ class TestConstruirPropiedades:
 class TestExtraccion:
 
     def test_detalle_max_10_errores(self):
-        inf = _informe("APROBADO")
+        inf = _informe("OK")
         inf.checks = [
             _check(f"C-{i:02d}", "FAIL", bloquea=True, grupo="Material")
             for i in range(15)
@@ -226,7 +226,7 @@ class TestExtraccion:
             assert id_ not in detalle
 
     def test_detalle_incluye_descripcion_y_detalle(self):
-        inf = _informe("APROBADO")
+        inf = _informe("OK")
         inf.checks = [
             _check("C-15", "FAIL", bloquea=True, grupo="Material",
                    detalle="PLY+LAC inválido")
