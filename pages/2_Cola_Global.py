@@ -536,7 +536,7 @@ def _render_resultado(r: dict) -> None:
             estado_drive = proyecto.get("estado", "PENDIENTE")
 
             if estado_drive == estado:
-                st.success("Ya aplicado en Drive", icon="✓")
+                st.success("Ya aplicado en Drive", icon="✅")
             elif estado != "BLOQUEADO":
                 if st.button(
                     f"Aplicar [{estado}]",

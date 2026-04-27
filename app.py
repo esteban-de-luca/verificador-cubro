@@ -436,7 +436,7 @@ def _panel_accion(proyecto: dict, informe: InformeFinal) -> None:
         if estado_drive == estado_informe:
             st.success(
                 f"La carpeta ya tiene el estado [{estado_informe}].",
-                icon="✓",
+                icon="✅",
             )
         else:
             _color_btn = _COLOR[estado_informe]
@@ -471,7 +471,7 @@ def _panel_accion(proyecto: dict, informe: InformeFinal) -> None:
 
     # Feedback de acciones completadas
     if st.session_state.pop("_accion_ok", None):
-        st.success(st.session_state.get("_accion_ok_msg", "Acción completada."), icon="✓")
+        st.success(st.session_state.get("_accion_ok_msg", "Acción completada."), icon="✅")
     if msg := st.session_state.pop("_accion_error", None):
         st.error(f"Error: {msg}")
 
@@ -485,7 +485,7 @@ def page_verificar() -> None:
 
     # Feedback de acciones (puede venir de un rerun tras modal)
     if msg := st.session_state.pop("_accion_ok", None):
-        st.success(msg, icon="✓")
+        st.success(msg, icon="✅")
     if msg := st.session_state.pop("_accion_error", None):
         st.error(f"Error: {msg}")
 
