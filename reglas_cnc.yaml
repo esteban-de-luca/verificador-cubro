@@ -27,6 +27,22 @@ excepciones:
     tipo: RETALES_GENERADOS
     justifica_check: C-60
 
+  - patron: "del retal {codigo}"
+    tipo: RETAL_CODIGO
+    justifica_check: C-60
+
+  - patron: "de retal {codigo}"
+    tipo: RETAL_CODIGO
+    justifica_check: C-60
+
+  - patron: "del retal"
+    tipo: RETAL_CODIGO
+    justifica_check: C-60
+
+  - patron: "de retal"
+    tipo: RETAL_CODIGO
+    justifica_check: C-60
+
   - patron: "sin mecanizar"
     tipo: SIN_MECANIZADO
     justifica_check: C-61

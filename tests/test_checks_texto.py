@@ -69,6 +69,20 @@ class TestC60:
         r = check_retales_en_ot(ot, dxfs, reglas_cnc)
         assert r.resultado == "PASS"
 
+    def test_pass_layer_retal_con_codigo_ot(self, reglas_cnc):
+        """PASS: OT menciona retal por código ('del retal R295')."""
+        dxfs = [_dxf(layers={"CONTROL", "RETAL UTILIZADO"})]
+        ot = _ot(obs_cnc=["Las piezas (B1 y B2) se deben cortar del retal R295."])
+        r = check_retales_en_ot(ot, dxfs, reglas_cnc)
+        assert r.resultado == "PASS"
+
+    def test_pass_layer_retal_con_de_retal(self, reglas_cnc):
+        """PASS: OT menciona 'de retal' sin código explícito."""
+        dxfs = [_dxf(layers={"CONTROL", "RETAL UTILIZADO"})]
+        ot = _ot(obs_cnc=["Piezas de retal Wood Cerezo"])
+        r = check_retales_en_ot(ot, dxfs, reglas_cnc)
+        assert r.resultado == "PASS"
+
     def test_id_check(self, reglas_cnc):
         r = check_retales_en_ot(_ot(), [], reglas_cnc)
         assert r.id == "C-60"
