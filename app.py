@@ -53,6 +53,7 @@ _COLOR = {
     "BLOQUEADO":    "#e53935",
     "ADVERTENCIAS": "#fb8c00",
     "OK":           "#43a047",
+    "OK_MANUAL":    "#43a047",
     "PENDIENTE":    "#757575",
     "PASS": "#43a047",
     "WARN": "#fb8c00",
@@ -63,16 +64,22 @@ _ICONO = {
     "BLOQUEADO":    "🔴",
     "ADVERTENCIAS": "🟠",
     "OK":           "🟢",
+    "OK_MANUAL":    "🟢",
     "PENDIENTE":    "⚪",
     "PASS": "✅",
     "WARN": "⚠️",
     "FAIL": "❌",
     "SKIP": "⏭️",
 }
+#: Etiqueta legible para mostrar en chips/banners (los demás estados coinciden con su clave).
+_ESTADO_LABEL = {
+    "OK_MANUAL": "OK - MANUAL",
+}
 _ESTADO_A_CLAVE = {
     "BLOQUEADO": "bloqueado",
     "ADVERTENCIAS": "advertencias",
     "OK": "aprobado",
+    "OK_MANUAL": "aprobado_manual",
 }
 
 # ---------------------------------------------------------------------------
@@ -170,6 +177,63 @@ def _modal_aplicar_estado(folder_id: str, nombre_actual: str, nombre_limpio: str
             st.rerun()
     with col2:
         if st.button("Cancelar", use_container_width=True):
+            st.rerun()
+
+
+@st.dialog("⚠️ Forzar OK Manual — Override")
+def _modal_forzar_ok_manual(folder_id: str, nombre_actual: str, nombre_limpio: str,
+                             estado_informe: str):
+    """
+    Override manual: marca como [OK - MANUAL] un proyecto que la verificación
+    automática considera BLOQUEADO o con ADVERTENCIAS. Usar solo cuando
+    una revisión manual confirma que el fichero está correcto.
+    """
+    prefijos = get_reglas()["nomenclatura"]["prefijos_estado"]
+    nuevo_nombre = f"{prefijos['aprobado_manual']}{nombre_limpio}"
+
+    st.error(
+        f"La verificación automática marca este proyecto como **{estado_informe}**.",
+        icon="🚨",
+    )
+    st.markdown(
+        "Vas a aplicar un **override manual** sobre el resultado automático.\n\n"
+        "**Implica que:**\n"
+        "- El fichero **NO ha pasado** todas las validaciones automáticas.\n"
+        "- Confirmas que has revisado **manualmente** el proyecto.\n"
+        "- Asumes la responsabilidad de que el fichero es correcto para producción.\n\n"
+        "**Solo en casos puntuales:** rotura de stock, modificación temporal de un layer "
+        "DXF por un evento particular, etc."
+    )
+    st.markdown(
+        f"La carpeta será renombrada a:\n\n"
+        f"**`{nuevo_nombre}`**"
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button(
+            "Aceptar y forzar OK Manual",
+            type="primary",
+            use_container_width=True,
+            key="btn_confirmar_ok_manual",
+        ):
+            with st.spinner("Aplicando override…"):
+                try:
+                    aplicar_prefijo_estado(
+                        get_servicio(), folder_id, nombre_actual,
+                        "aprobado_manual", get_reglas(),
+                    )
+                    st.session_state._accion_ok = (
+                        f"Override aplicado: «{nuevo_nombre}». "
+                        f"El estado real de la verificación sigue siendo {estado_informe}."
+                    )
+                    st.session_state.proyecto["estado"] = "OK_MANUAL"
+                    st.session_state.proyecto["name"] = nuevo_nombre
+                except Exception as exc:
+                    st.session_state._accion_error = str(exc)
+            st.rerun()
+    with col2:
+        if st.button("Cancelar", use_container_width=True, key="btn_cancelar_ok_manual"):
             st.rerun()
 
 
@@ -431,9 +495,15 @@ def _panel_accion(proyecto: dict, informe: InformeFinal) -> None:
     with col_drive:
         st.markdown("**Aplicar resultado en Drive**")
 
-        # Avisar si ya está aplicado
         estado_drive = proyecto.get("estado", "PENDIENTE")
-        if estado_drive == estado_informe:
+
+        if estado_drive == "OK_MANUAL":
+            st.success(
+                f"Override manual aplicado: la carpeta aparece como [OK - MANUAL]. "
+                f"El resultado real de la verificación sigue siendo {estado_informe}.",
+                icon="✅",
+            )
+        elif estado_drive == estado_informe:
             st.success(
                 f"La carpeta ya tiene el estado [{estado_informe}].",
                 icon="✅",
@@ -453,6 +523,26 @@ def _panel_accion(proyecto: dict, informe: InformeFinal) -> None:
                 _modal_aplicar_estado(
                     folder_id, nombre_actual, nombre_limpio, estado_informe
                 )
+
+            # Override manual: solo disponible cuando el informe es BLOQUEADO o
+            # ADVERTENCIAS y la carpeta aún no ha sido marcada como OK_MANUAL.
+            if estado_informe in ("BLOQUEADO", "ADVERTENCIAS"):
+                st.markdown(
+                    '<p style="color:#757575;font-size:0.85em;margin-top:8px;'
+                    'margin-bottom:4px;">'
+                    'Si has verificado manualmente que el fichero es correcto:'
+                    '</p>',
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    "✋ Forzar OK Manual",
+                    type="secondary",
+                    use_container_width=True,
+                    key="btn_forzar_ok_manual",
+                ):
+                    _modal_forzar_ok_manual(
+                        folder_id, nombre_actual, nombre_limpio, estado_informe
+                    )
 
     with col_info:
         st.markdown("**Otras acciones**")
@@ -501,9 +591,10 @@ def page_verificar() -> None:
     semana_name = st.session_state.semana["name"] if st.session_state.semana else "—"
     resp = st.session_state.responsable or "—"
 
+    estado_actual_label = _ESTADO_LABEL.get(estado_actual, estado_actual)
     st.markdown(f"## {_ICONO[estado_actual]} {proyecto['nombre_limpio']}")
     st.caption(
-        f"Estado en Drive: **{estado_actual}** · {semana_name} · {resp} · "
+        f"Estado en Drive: **{estado_actual_label}** · {semana_name} · {resp} · "
         f"[Abrir en Drive]({_url_drive(proyecto['id'])})"
     )
     col_btn, _ = st.columns([1, 3])

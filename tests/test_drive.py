@@ -76,6 +76,16 @@ class TestExtraerEstado:
         """PASS: prefijo [ADVERTENCIAS] → ADVERTENCIAS."""
         assert _extraer_estado("[ADVERTENCIAS] EU-22005") == "ADVERTENCIAS"
 
+    def test_ok_manual(self):
+        """PASS: prefijo [OK - MANUAL] → OK_MANUAL (override manual)."""
+        assert _extraer_estado("[OK - MANUAL] EU-21822_Sabine_Jennes") == "OK_MANUAL"
+
+    def test_ok_manual_no_se_confunde_con_ok(self):
+        """PASS: '[OK - MANUAL]' debe priorizar sobre '[OK]' en la alternancia."""
+        # Si la regex matchease "OK" antes que "OK - MANUAL", el resultado sería "OK"
+        # y ' - MANUAL' quedaría como parte del nombre — aquí validamos la prioridad.
+        assert _extraer_estado("[OK - MANUAL] proyecto") == "OK_MANUAL"
+
     def test_prefijo_desconocido_es_pendiente(self):
         """FAIL semántico: prefijo [FOO] no reconocido → PENDIENTE."""
         assert _extraer_estado("[FOO] EU-99999") == "PENDIENTE"

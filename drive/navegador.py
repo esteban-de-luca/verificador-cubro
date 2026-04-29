@@ -27,7 +27,9 @@ import config
 MIME_FOLDER = "application/vnd.google-apps.folder"
 
 #: Regex para extraer el prefijo de estado del nombre de carpeta.
-_RE_PREFIJO = re.compile(r"^\[(BLOQUEADO|ADVERTENCIAS|OK)\]\s+")
+#: El orden de la alternancia importa: "OK - MANUAL" debe ir antes de "OK"
+#: para que la regex no haga match parcial sobre el segundo.
+_RE_PREFIJO = re.compile(r"^\[(BLOQUEADO|ADVERTENCIAS|OK - MANUAL|OK)\]\s+")
 
 #: Regex para extraer el número de semana de "Semana XX".
 _RE_SEMANA = re.compile(r"Semana\s+0*(\d+)", re.IGNORECASE)
@@ -78,10 +80,16 @@ def _buscar_subcarpeta_por_nombre(
 def _extraer_estado(nombre: str) -> str:
     """
     Extrae el estado de una carpeta de proyecto a partir de su prefijo.
-    Devuelve: 'BLOQUEADO' | 'ADVERTENCIAS' | 'OK' | 'PENDIENTE'.
+    Devuelve: 'BLOQUEADO' | 'ADVERTENCIAS' | 'OK' | 'OK_MANUAL' | 'PENDIENTE'.
+
+    'OK_MANUAL' indica un override manual aplicado sobre un proyecto que la
+    verificación automática había marcado como BLOQUEADO o ADVERTENCIAS.
     """
     m = _RE_PREFIJO.match(nombre)
-    return m.group(1) if m else "PENDIENTE"
+    if not m:
+        return "PENDIENTE"
+    capturado = m.group(1)
+    return "OK_MANUAL" if capturado == "OK - MANUAL" else capturado
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +141,7 @@ def listar_proyectos(servicio: Any, semana_id: str) -> list[dict]:
 
     Returns:
         Lista [{id, name, estado, nombre_limpio}] ordenada alfabéticamente.
-        `estado` ∈ {BLOQUEADO, ADVERTENCIAS, OK, PENDIENTE}.
+        `estado` ∈ {BLOQUEADO, ADVERTENCIAS, OK, OK_MANUAL, PENDIENTE}.
         `nombre_limpio` es el nombre sin el prefijo de estado.
     """
     proyectos: list[dict] = []

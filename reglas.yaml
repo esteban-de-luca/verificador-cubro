@@ -418,6 +418,7 @@ nomenclatura:
     informe:    "informe_*"
     packing_list_cliente: "PACKING LIST CLIENTE_*"
   prefijos_estado:
-    bloqueado:    "[BLOQUEADO] "
-    advertencias: "[ADVERTENCIAS] "
-    aprobado:     "[OK] "
+    bloqueado:        "[BLOQUEADO] "
+    advertencias:     "[ADVERTENCIAS] "
+    aprobado:         "[OK] "
+    aprobado_manual:  "[OK - MANUAL] "

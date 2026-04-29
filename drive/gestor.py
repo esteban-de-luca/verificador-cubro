@@ -19,7 +19,14 @@ from drive.navegador import _RE_PREFIJO
 
 
 #: Estados válidos aceptados por aplicar_prefijo_estado.
-ESTADOS_VALIDOS = frozenset({"bloqueado", "advertencias", "aprobado"})
+#: 'aprobado_manual' es un override manual aplicado por el operador sobre un
+#: proyecto que la verificación automática marcó como BLOQUEADO o ADVERTENCIAS.
+ESTADOS_VALIDOS = frozenset({
+    "bloqueado",
+    "advertencias",
+    "aprobado",
+    "aprobado_manual",
+})
 
 
 def renombrar_carpeta(servicio: Any, folder_id: str, nuevo_nombre: str) -> dict:
@@ -137,7 +144,7 @@ def aplicar_prefijo_estado(
         servicio: cliente Drive v3.
         folder_id: ID de la carpeta de proyecto.
         nombre_actual: nombre completo actual de la carpeta (con o sin prefijo).
-        estado: una de {'bloqueado', 'advertencias', 'aprobado'}.
+        estado: una de {'bloqueado', 'advertencias', 'aprobado', 'aprobado_manual'}.
         reglas: dict de reglas cargado por reglas_loader.
 
     Returns:

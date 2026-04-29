@@ -29,7 +29,10 @@ from drive.gestor import aplicar_prefijo_estado
 from engine import verificar_proyecto
 
 _ROOT = Path(__file__).parent.parent
-from app import get_reglas, get_reglas_cnc, get_servicio, _COLOR, _ICONO, _ESTADO_A_CLAVE
+from app import (
+    get_reglas, get_reglas_cnc, get_servicio,
+    _COLOR, _ICONO, _ESTADO_A_CLAVE, _ESTADO_LABEL,
+)
 from app import _extraer_id_proyecto, _url_drive, _informe_a_texto
 
 
@@ -187,8 +190,9 @@ def _render_grupo_responsable(responsable: str, proyectos: list[dict]) -> None:
 
             color = _COLOR.get(p["estado"], _COLOR["PENDIENTE"])
             icono = _ICONO.get(p["estado"], "⚪")
+            estado_lbl = _ESTADO_LABEL.get(p["estado"], p["estado"])
             col_est.markdown(
-                f'<span style="color:{color};font-weight:600;">{icono} {p["estado"]}</span>',
+                f'<span style="color:{color};font-weight:600;">{icono} {estado_lbl}</span>',
                 unsafe_allow_html=True,
             )
             col_link.markdown(f"[↗ Drive]({_url_drive(p['id'])})")
