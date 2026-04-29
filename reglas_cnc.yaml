@@ -51,6 +51,10 @@ excepciones:
     tipo: HERRAJES_BALDA
     justifica_check: C-26
 
+  - patron: "herrajes ocultos"
+    tipo: HERRAJES_OCULTOS
+    justifica_check: C-26
+
   - patron: "{id}: redondeo R{valor}mm"
     tipo: ENCASTRE_ENC
     justifica_check: []

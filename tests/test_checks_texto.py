@@ -144,6 +144,13 @@ class TestC62:
         assert r.resultado == "SKIP"
         assert not r.bloquea
 
+    def test_pass_herrajes_ocultos_texto_garbled(self, reglas_cnc):
+        """PASS: OT con texto de PDF garbled — 'herrajes ocultos' sigue siendo substring."""
+        obs = "- Las baldas B1 y B2se deben mecanizar para 3herrajes ocultos (uno a200mm de cada lado yuno centrado)."
+        ot = _ot(obs_cnc=[obs])
+        r = check_observaciones_reconocidas(ot, reglas_cnc)
+        assert r.resultado == "PASS"
+
     def test_id_check(self, reglas_cnc):
         r = check_observaciones_reconocidas(_ot(), reglas_cnc)
         assert r.id == "C-62"
