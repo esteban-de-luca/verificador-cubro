@@ -15,7 +15,7 @@ from core.modelos import CheckResult, InformeFinal
 from core.reglas_loader import cargar_reglas, cargar_reglas_cnc
 from drive.cliente import obtener_servicio_drive
 from drive.navegador import listar_semanas, listar_proyectos
-from drive.gestor import aplicar_prefijo_estado
+from drive.gestor import aplicar_prefijo_estado, PREFIJOS_DEFAULT
 from engine import verificar_proyecto
 from notion_writer import NotionWriter
 
@@ -189,7 +189,8 @@ def _modal_forzar_ok_manual(folder_id: str, nombre_actual: str, nombre_limpio: s
     una revisión manual confirma que el fichero está correcto.
     """
     prefijos = get_reglas()["nomenclatura"]["prefijos_estado"]
-    nuevo_nombre = f"{prefijos['aprobado_manual']}{nombre_limpio}"
+    prefijo = prefijos.get("aprobado_manual") or PREFIJOS_DEFAULT["aprobado_manual"]
+    nuevo_nombre = f"{prefijo}{nombre_limpio}"
 
     st.error(
         f"La verificación automática marca este proyecto como **{estado_informe}**.",

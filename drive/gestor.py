@@ -28,6 +28,17 @@ ESTADOS_VALIDOS = frozenset({
     "aprobado_manual",
 })
 
+#: Prefijos por defecto si reglas.yaml no los define. Sirve de fallback ante
+#: caché stale del YAML en deploys (p. ej. @st.cache_resource en Streamlit
+#: Cloud) y como fuente de verdad para el override manual, que no es un valor
+#: que el operador deba cambiar.
+PREFIJOS_DEFAULT = {
+    "bloqueado":       "[BLOQUEADO] ",
+    "advertencias":    "[ADVERTENCIAS] ",
+    "aprobado":        "[OK] ",
+    "aprobado_manual": "[OK - MANUAL] ",
+}
+
 
 def renombrar_carpeta(servicio: Any, folder_id: str, nuevo_nombre: str) -> dict:
     """
@@ -159,11 +170,13 @@ def aplicar_prefijo_estado(
         )
 
     prefijos = reglas["nomenclatura"]["prefijos_estado"]
-    if estado not in prefijos:
+    prefijo = prefijos.get(estado) or PREFIJOS_DEFAULT.get(estado)
+    if not prefijo:
         raise ValueError(
-            f"reglas.yaml → nomenclatura.prefijos_estado no define '{estado}'"
+            f"reglas.yaml → nomenclatura.prefijos_estado no define '{estado}' "
+            f"y no hay default en PREFIJOS_DEFAULT"
         )
 
     nombre_limpio = _RE_PREFIJO.sub("", nombre_actual)
-    nuevo_nombre = f"{prefijos[estado]}{nombre_limpio}"
+    nuevo_nombre = f"{prefijo}{nombre_limpio}"
     return renombrar_carpeta(servicio, folder_id, nuevo_nombre)

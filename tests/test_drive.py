@@ -310,11 +310,18 @@ class TestGestor:
                 servicio, "f1", "EU-X", "verde_fluor", reglas
             )
 
-    def test_prefijo_ausente_en_yaml_lanza_error(self):
-        """FAIL: el YAML no tiene el prefijo para el estado dado → ValueError."""
+    def test_prefijo_ausente_en_yaml_usa_default(self):
+        """PASS: si el YAML no define el prefijo, se usa PREFIJOS_DEFAULT.
+
+        Cubre el caso de caché stale del YAML (p. ej. @st.cache_resource en
+        Streamlit Cloud cargó una versión antigua sin la nueva clave).
+        """
+        # YAML solo trae 'aprobado' — falta 'aprobado_manual', pero el default
+        # de gestor.PREFIJOS_DEFAULT debe rescatar el rename.
         reglas = {"nomenclatura": {"prefijos_estado": {"aprobado": "[OK] "}}}
-        servicio = _hacer_servicio_mock()
-        with pytest.raises(ValueError, match="no define"):
-            gestor.aplicar_prefijo_estado(
-                servicio, "f1", "EU-X", "bloqueado", reglas
-            )
+        servicio = _hacer_servicio_mock([{"id": "f1", "name": "[OK - MANUAL] EU-X"}])
+        gestor.aplicar_prefijo_estado(
+            servicio, "f1", "EU-X", "aprobado_manual", reglas
+        )
+        body = servicio.files().update.call_args.kwargs["body"]
+        assert body["name"] == "[OK - MANUAL] EU-X"
