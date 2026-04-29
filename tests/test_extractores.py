@@ -23,6 +23,7 @@ from core.modelos import CheckResult, Pieza, Bulto, OTData, DXFDoc, InformeFinal
 from core.extractor_despiece import leer_despiece, _inferir_tipologia, _normalizar
 from core.extractor_etiquetas_ean import leer_etiquetas, leer_ean
 from core.extractor_ot import leer_ot
+from core.extractor_pdfs_logistica import leer_codigo_destino
 
 
 # ===========================================================================
@@ -833,3 +834,53 @@ class TestLeerOT:
         assert ot.num_piezas == 0
         assert ot.tableros == {}
         assert ot.observaciones_cnc == []
+
+
+# ===========================================================================
+# leer_codigo_destino — PDF DESTINO CAJA
+# ===========================================================================
+
+class _PdfMockLogistica:
+    """Mock mínimo de pdfplumber para leer_codigo_destino."""
+    def __init__(self, texto: str):
+        self._texto = texto
+        self.pages = [self]
+
+    def extract_text(self, **_):
+        return self._texto
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        pass
+
+
+class TestLeerCodigoDestino:
+
+    def _mock(self, texto: str):
+        return _PdfMockLogistica(texto)
+
+    def test_extrae_codigo_cub_explicito(self):
+        """PASS: texto tiene 'CUB-EU-21822' explícito."""
+        texto = "EU-21822\nCliente\nEspaña\nCUB-EU-21822"
+        with patch("core.extractor_pdfs_logistica.pdfplumber.open", return_value=self._mock(texto)):
+            assert leer_codigo_destino(io.BytesIO(b"x")) == "CUB-EU-21822"
+
+    def test_fallback_id_sin_prefijo_cub(self):
+        """PASS: texto solo tiene 'SP-21428' (barcode no extraíble) → fallback construye CUB-SP-21428."""
+        texto = "SP-21428\nAlba Cuesta Arroyo\nEspaña"
+        with patch("core.extractor_pdfs_logistica.pdfplumber.open", return_value=self._mock(texto)):
+            assert leer_codigo_destino(io.BytesIO(b"x")) == "CUB-SP-21428"
+
+    def test_fallback_proyecto_inc(self):
+        """PASS: ID con sufijo -INC también se detecta en fallback."""
+        texto = "EU-21822-INC\nCliente\nEspaña"
+        with patch("core.extractor_pdfs_logistica.pdfplumber.open", return_value=self._mock(texto)):
+            assert leer_codigo_destino(io.BytesIO(b"x")) == "CUB-EU-21822-INC"
+
+    def test_none_si_pdf_sin_id(self):
+        """PASS: PDF sin ningún ID reconocible → None."""
+        texto = "Sin texto útil"
+        with patch("core.extractor_pdfs_logistica.pdfplumber.open", return_value=self._mock(texto)):
+            assert leer_codigo_destino(io.BytesIO(b"x")) is None
