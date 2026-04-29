@@ -111,11 +111,11 @@ def listar_responsables(servicio: Any) -> list[dict]:
 
 def listar_semanas(servicio: Any, responsable: str) -> list[dict]:
     """
-    Subcarpetas "Semana XX" dentro de la carpeta de un responsable,
-    ordenadas de más reciente (número mayor) a más antigua.
+    Subcarpetas "Semana XX" e "INCIDENCIAS" dentro de la carpeta de un responsable.
+    Las semanas se ordenan de más reciente a más antigua; INCIDENCIAS aparece primero.
 
     Returns:
-        Lista de dicts [{id, name, numero}] con el entero de semana añadido.
+        Lista de dicts [{id, name, numero}]. Para INCIDENCIAS, numero=0.
     """
     raiz_id = config.drive_cuarentena_id()
     carpeta_resp = _buscar_subcarpeta_por_nombre(servicio, raiz_id, responsable)
@@ -123,11 +123,17 @@ def listar_semanas(servicio: Any, responsable: str) -> list[dict]:
         return []
 
     semanas: list[dict] = []
+    incidencias: dict | None = None
     for c in _listar_subcarpetas(servicio, carpeta_resp["id"]):
-        m = _RE_SEMANA.match(c["name"])
-        if m:
-            semanas.append({"id": c["id"], "name": c["name"], "numero": int(m.group(1))})
+        if c["name"].upper() == "INCIDENCIAS":
+            incidencias = {"id": c["id"], "name": c["name"], "numero": 0}
+        else:
+            m = _RE_SEMANA.match(c["name"])
+            if m:
+                semanas.append({"id": c["id"], "name": c["name"], "numero": int(m.group(1))})
     semanas.sort(key=lambda s: s["numero"], reverse=True)
+    if incidencias:
+        semanas.insert(0, incidencias)
     return semanas
 
 

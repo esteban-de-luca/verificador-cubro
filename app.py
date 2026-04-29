@@ -298,7 +298,7 @@ def _sidebar() -> dict | None:
         return None
 
     semana_idx = st.sidebar.selectbox(
-        "Semana",
+        "Semana / Incidencias",
         range(len(semanas)),
         format_func=lambda i: semanas[i]["name"],
         index=0,
