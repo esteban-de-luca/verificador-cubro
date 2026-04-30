@@ -61,7 +61,7 @@ def check_documentos_presentes(nombres_archivos: list[str], reglas: dict) -> Che
 # C-01: ID de proyecto consistente en todos los archivos
 # ---------------------------------------------------------------------------
 
-_RE_ID_ARCHIVO = re.compile(r"(?<![A-Za-z])((?:EU|SP)-?\d{5}(?:-INC)?)", re.IGNORECASE)
+_RE_ID_ARCHIVO = re.compile(r"(?<![A-Za-z])((?:EU|SP|C[1-5])-?\d{5}(?:-INC)?)", re.IGNORECASE)
 
 
 def check_id_consistente(nombres_archivos: list[str], id_proyecto: str) -> CheckResult:
@@ -169,7 +169,7 @@ def check_num_dxf_vs_ot(dxfs: list[DXFDoc], ot: OTData) -> CheckResult:
 # ---------------------------------------------------------------------------
 
 _RE_NESTING_PDF = re.compile(
-    r"(?:EU|SP)-?\d+.*?(PLY|MDF).*?\.pdf$", re.IGNORECASE
+    r"(?:EU|SP|C[1-5])-?\d+.*?(PLY|MDF).*?\.pdf$", re.IGNORECASE
 )
 
 

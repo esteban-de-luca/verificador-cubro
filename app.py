@@ -127,12 +127,12 @@ def _log_notion(informe: InformeFinal) -> None:
         st.toast(f"Notion no disponible: {exc}", icon="⚠️")
 
 
-_RE_ID_PROYECTO = re.compile(r"((?:EU|SP)-?\d{5}(?:-INC)?)", re.IGNORECASE)
+_RE_ID_PROYECTO = re.compile(r"((?:EU|SP|C[1-5])-?\d{5}(?:-INC)?)", re.IGNORECASE)
 
 def _extraer_id_proyecto(nombre_limpio: str) -> str:
     """Extrae el ID de proyecto del nombre de carpeta.
 
-    Busca el patrón EU-XXXXX / SP-XXXXX donde sea que aparezca,
+    Busca el patrón EU-XXXXX / SP-XXXXX / C[1-5]-XXXXX donde sea que aparezca,
     para tolerar prefijos como 'S5_EU-21247_...' o 'EU-21247_...'.
     Si no hay match devuelve el primer segmento como fallback.
     """
