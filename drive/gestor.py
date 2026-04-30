@@ -57,7 +57,7 @@ def renombrar_carpeta(servicio: Any, folder_id: str, nuevo_nombre: str) -> dict:
         body={"name": nuevo_nombre},
         fields="id, name",
         supportsAllDrives=True,
-    ).execute()
+    ).execute(num_retries=2)
 
 
 def mover_carpeta(servicio: Any, folder_id: str, destino_id: str) -> dict:
@@ -76,7 +76,7 @@ def mover_carpeta(servicio: Any, folder_id: str, destino_id: str) -> dict:
         fileId=folder_id,
         fields="parents",
         supportsAllDrives=True,
-    ).execute()
+    ).execute(num_retries=2)
     parents_previos = ",".join(actual.get("parents", []))
 
     return servicio.files().update(
@@ -85,7 +85,7 @@ def mover_carpeta(servicio: Any, folder_id: str, destino_id: str) -> dict:
         removeParents=parents_previos,
         fields="id, name, parents",
         supportsAllDrives=True,
-    ).execute()
+    ).execute(num_retries=2)
 
 
 def subir_informe_txt(
@@ -119,11 +119,11 @@ def subir_informe_txt(
         fields="files(id)",
         supportsAllDrives=True,
         includeItemsFromAllDrives=True,
-    ).execute().get("files", [])
+    ).execute(num_retries=2).get("files", [])
     for f in existentes:
         servicio.files().delete(
             fileId=f["id"], supportsAllDrives=True
-        ).execute()
+        ).execute(num_retries=2)
 
     media = MediaIoBaseUpload(
         io.BytesIO(contenido.encode("utf-8")),
@@ -135,7 +135,7 @@ def subir_informe_txt(
         media_body=media,
         fields="id, name, webViewLink",
         supportsAllDrives=True,
-    ).execute()
+    ).execute(num_retries=2)
 
 
 def aplicar_prefijo_estado(

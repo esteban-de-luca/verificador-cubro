@@ -11,10 +11,19 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
+import httplib2
 from google.oauth2 import service_account
+from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.discovery import build
 
 import config
+
+
+#: Timeout (segundos) para cada operación HTTP a Drive. Evita que un
+#: cuelgue puntual del socket (cold start, glitch de red) bloquee la app
+#: indefinidamente — junto con num_retries=2 en cada .execute(), una
+#: lentitud transitoria se reintenta en vez de tirar la página.
+_DRIVE_HTTP_TIMEOUT = 30
 
 
 @lru_cache(maxsize=1)
@@ -41,7 +50,11 @@ def obtener_servicio_drive() -> Any:
     Raises:
         RuntimeError: si las credenciales no están configuradas.
     """
-    return build("drive", "v3", credentials=obtener_credenciales(), cache_discovery=False)
+    http = AuthorizedHttp(
+        obtener_credenciales(),
+        http=httplib2.Http(timeout=_DRIVE_HTTP_TIMEOUT),
+    )
+    return build("drive", "v3", http=http, cache_discovery=False)
 
 
 def resetear_servicio_cache() -> None:

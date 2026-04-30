@@ -45,7 +45,7 @@ def descargar_archivo(servicio: Any, file_id: str) -> io.BytesIO:
     downloader = MediaIoBaseDownload(buffer, request)
     done = False
     while not done:
-        _, done = downloader.next_chunk()
+        _, done = downloader.next_chunk(num_retries=2)
     buffer.seek(0)
     return buffer
 
