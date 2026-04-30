@@ -16,9 +16,9 @@ import pdfplumber
 
 
 _RE_BULTO_TOTAL = re.compile(r"Bulto\s+\d+\s+de\s+(\d+)", re.IGNORECASE)
-_RE_CODIGO_CUB = re.compile(r"CUB-((?:EU|SP)-\d{5}(?:-INC)?)", re.IGNORECASE)
+_RE_CODIGO_CUB = re.compile(r"CUB-((?:EU|SP|C[1-5])-\d{5}(?:-INC)?)", re.IGNORECASE)
 # Fallback: el ID sin prefijo CUB- (texto grande de cabecera del PDF)
-_RE_ID_PROYECTO = re.compile(r"\b((?:EU|SP)-\d{5}(?:-INC)?)\b", re.IGNORECASE)
+_RE_ID_PROYECTO = re.compile(r"\b((?:EU|SP|C[1-5])-\d{5}(?:-INC)?)\b", re.IGNORECASE)
 
 
 def _texto_pdf(origen: BinaryIO | Path | str) -> str:

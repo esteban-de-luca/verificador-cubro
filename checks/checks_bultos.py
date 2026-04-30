@@ -22,7 +22,7 @@ _GRUPO = "Logistica"
 
 # Regex para validar formato de ID de bulto: CUB-{ID_PROYECTO}-{N}-{TOTAL}
 _RE_ID_BULTO = re.compile(
-    r"^CUB-(?:EU|SP)-?\d{5}(?:-INC)?-\d+-\d+$", re.IGNORECASE
+    r"^CUB-(?:EU|SP|C[1-5])-?\d{5}(?:-INC)?-\d+-\d+$", re.IGNORECASE
 )
 
 

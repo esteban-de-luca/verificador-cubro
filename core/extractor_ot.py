@@ -36,7 +36,7 @@ from core.modelos import OTData
 # ---------------------------------------------------------------------------
 
 _RE_ID_PROYECTO = re.compile(
-    r"\b((?:EU|SP)-\d{5}(?:-INC)?)\b", re.IGNORECASE
+    r"\b((?:EU|SP|C[1-5])-\d{5}(?:-INC)?)\b", re.IGNORECASE
 )
 _RE_CLIENTE = re.compile(
     r"(?:cliente|client|customer)[:\s]+([A-Za-záéíóúàèìòùñüÁÉÍÓÚÑ ,.-]+?)(?:\n|$)",
@@ -82,7 +82,7 @@ _RE_TABLEROS_TOTAL = re.compile(
 )
 # Filas del Packing List: "EU-21247 M5-T2 120 800 ..."  o  "EU-21247 P1-P1 ..."  o  "EU-21247 R2 ..."  o  "EU-21742 H1-TAP ..."
 _RE_PL_FILA = re.compile(
-    r"(?:EU|SP)-\d{5}(?:-INC)?\s+"                        # ID proyecto al inicio de fila
+    r"(?:EU|SP|C[1-5])-\d{5}(?:-INC)?\s+"                 # ID proyecto al inicio de fila
     r"([A-Za-z]+\d+-[A-Za-z]+\d*|[A-Za-z]+\d+)",          # ID pieza: M9-PL1, P1-P1, H1-TAP, R2, E1…
     re.IGNORECASE
 )
