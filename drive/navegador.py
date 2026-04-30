@@ -59,7 +59,7 @@ def _listar_subcarpetas(servicio: Any, parent_id: str) -> list[dict]:
             pageToken=page_token,
             supportsAllDrives=True,
             includeItemsFromAllDrives=True,
-        ).execute()
+        ).execute(num_retries=2)
         resultados.extend(respuesta.get("files", []))
         page_token = respuesta.get("nextPageToken")
         if not page_token:
@@ -70,11 +70,28 @@ def _listar_subcarpetas(servicio: Any, parent_id: str) -> list[dict]:
 def _buscar_subcarpeta_por_nombre(
     servicio: Any, parent_id: str, nombre: str
 ) -> dict | None:
-    """Busca una subcarpeta exacta por nombre dentro de parent_id."""
-    for sub in _listar_subcarpetas(servicio, parent_id):
-        if sub["name"] == nombre:
-            return sub
-    return None
+    """Busca una subcarpeta exacta por nombre dentro de parent_id.
+
+    Filtra por nombre directamente en el servidor (no descarga todas las
+    subcarpetas para luego filtrar en Python) — evita timeouts cuando el
+    parent tiene muchas subcarpetas.
+    """
+    nombre_escapado = nombre.replace("\\", "\\\\").replace("'", "\\'")
+    query = (
+        f"'{parent_id}' in parents "
+        f"and mimeType = '{MIME_FOLDER}' "
+        f"and name = '{nombre_escapado}' "
+        f"and trashed = false"
+    )
+    respuesta = servicio.files().list(
+        q=query,
+        fields="files(id, name, parents)",
+        pageSize=1,
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+    ).execute(num_retries=2)
+    files = respuesta.get("files", [])
+    return files[0] if files else None
 
 
 def _extraer_estado(nombre: str) -> str:
@@ -184,7 +201,7 @@ def listar_archivos(servicio: Any, folder_id: str) -> list[dict]:
             pageToken=page_token,
             supportsAllDrives=True,
             includeItemsFromAllDrives=True,
-        ).execute()
+        ).execute(num_retries=2)
         todos = respuesta.get("files", [])
         resultados.extend(f for f in todos if f.get("mimeType") != MIME_FOLDER)
         page_token = respuesta.get("nextPageToken")

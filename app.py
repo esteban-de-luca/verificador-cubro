@@ -45,6 +45,18 @@ def get_notion_writer() -> NotionWriter | None:
     except RuntimeError:
         return None
 
+
+# Listados de Drive cacheados con TTL corto. Evita golpear la API en cada
+# rerun de Streamlit (cada interacción del sidebar fuerza un rerun completo).
+# Tras un rename/move se invalida explícitamente con .clear().
+@st.cache_data(ttl=120, show_spinner=False)
+def _listar_semanas_cached(responsable: str) -> list[dict]:
+    return listar_semanas(get_servicio(), responsable)
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _listar_proyectos_cached(semana_id: str) -> list[dict]:
+    return listar_proyectos(get_servicio(), semana_id)
+
 # ---------------------------------------------------------------------------
 # Paleta visual
 # ---------------------------------------------------------------------------
@@ -167,6 +179,7 @@ def _modal_aplicar_estado(folder_id: str, nombre_actual: str, nombre_limpio: str
                         get_servicio(), folder_id, nombre_actual,
                         estado_clave, get_reglas(),
                     )
+                    _listar_proyectos_cached.clear()
                     st.session_state._accion_ok = (
                         f"Carpeta renombrada a «{nuevo_nombre}»"
                     )
@@ -224,6 +237,7 @@ def _modal_forzar_ok_manual(folder_id: str, nombre_actual: str, nombre_limpio: s
                         get_servicio(), folder_id, nombre_actual,
                         "aprobado_manual", get_reglas(),
                     )
+                    _listar_proyectos_cached.clear()
                     st.session_state._accion_ok = (
                         f"Override aplicado: «{nuevo_nombre}». "
                         f"El estado real de la verificación sigue siendo {estado_informe}."
@@ -253,6 +267,7 @@ def _modal_mover_carpintek(folder_id: str, nombre_limpio: str):
                     from drive.gestor import mover_carpeta
                     destino_id = config.drive_carpintek_id()
                     mover_carpeta(get_servicio(), folder_id, destino_id)
+                    _listar_proyectos_cached.clear()
                     st.session_state._accion_ok = (
                         f"«{nombre_limpio}» movido a Carpintek."
                     )
@@ -291,7 +306,7 @@ def _sidebar() -> dict | None:
 
     with st.sidebar:
         with st.spinner(""):
-            semanas = listar_semanas(get_servicio(), responsable)
+            semanas = _listar_semanas_cached(responsable)
 
     if not semanas:
         st.sidebar.info("Sin semanas disponibles.")
@@ -314,7 +329,7 @@ def _sidebar() -> dict | None:
 
     with st.sidebar:
         with st.spinner(""):
-            proyectos = listar_proyectos(get_servicio(), semana_sel["id"])
+            proyectos = _listar_proyectos_cached(semana_sel["id"])
 
     if not proyectos:
         st.sidebar.info("Sin proyectos en esta semana.")
