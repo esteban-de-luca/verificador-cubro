@@ -73,6 +73,7 @@ from checks.checks_dxf import (
     check_tirantes,
     check_layers_desuso,
     check_distancia_bisagras,
+    check_nesting_laca,
 )
 from checks.checks_bultos import (
     check_num_bultos,
@@ -297,6 +298,7 @@ def _ejecutar_checks(
     resultados.append(check_tirantes(datos.dxfs, ot, reglas))
     resultados.append(check_layers_desuso(datos.dxfs, reglas))
     resultados.append(check_distancia_bisagras(datos.dxfs, reglas))
+    resultados.append(check_nesting_laca(datos.dxfs, reglas))
 
     # Bultos (C-50..C-56)
     resultados.append(check_num_bultos(datos.filas_ean, datos.n_bultos_pdf))

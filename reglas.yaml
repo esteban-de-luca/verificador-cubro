@@ -295,6 +295,35 @@ bisagra_distancia:
       descripcion: "Puerta custom con 4 bisagras (2x2) — herrajes especiales"
 
 # -----------------------------------------------------------------------------
+# NESTING LACA (Check C-45)
+# Disposición geométrica de las piezas LAC en el nesting:
+# - Si el proyecto contiene CUALQUIER acabado LAC no estándar (Marga, Agave,
+#   Noche, etc.) → TODAS las piezas LAC del proyecto (incluidos Roto/Crema/
+#   Blanco/Seda) deben ir PEGADAS (gap = 0).
+# - Si todos los acabados LAC del proyecto son estándar (Roto/Crema/Blanco/
+#   Seda) → todas las piezas deben ir SEPARADAS exactamente 15 mm.
+# La lista de acabados estándar se reutiliza de
+# layers.corte_perimetral.lac_acabados_estandar.
+# -----------------------------------------------------------------------------
+nesting_laca:
+  # Layer del que se leen los contornos para validar la disposición.
+  # En proyectos no estándar, C-35 garantiza que todas las piezas LAC usan
+  # este layer; en proyectos 100% estándar, las piezas LAC siguen quedando
+  # rodeadas por CUTEXT — el check probará primero CONTORNO LACA y, si está
+  # vacío, caerá a CUTEXT.
+  layer_contorno_no_estandar: "10_12-CONTORNO LACA"
+  layer_contorno_estandar: "10_12-CUTEXT-EM5-Z18"
+  # Distancia esperada entre piezas vecinas según el régimen del proyecto.
+  gap_pegado_mm: 0
+  gap_separado_mm: 15
+  # Tolerancia para absorber ruido de coma flotante en coordenadas DXF.
+  eps_mm: 0.5
+  # Solape mínimo (fracción 0..1) en el eje perpendicular para considerar
+  # dos piezas como "vecinas" en el otro eje. Evita comparar piezas de
+  # filas/columnas distintas.
+  solape_vecindad: 0.5
+
+# -----------------------------------------------------------------------------
 # DESBASTE TIRADOR (Check C-36)
 # Mapping color tirador → layer DXF esperado
 # La clave _LIN aplica a cualquier pieza de gama LIN independientemente del color

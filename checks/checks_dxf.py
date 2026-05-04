@@ -692,3 +692,198 @@ def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     if not algun_tablero_con_bisagras:
         return _skip(ID, DESC, "Sin circles 7-POCKET con companion en los DXFs", _GRUPO)
     return _resultado(ID, DESC, errores, True, _GRUPO)
+
+
+# ---------------------------------------------------------------------------
+# C-45: Disposición de piezas LAC en el nesting (pegadas vs separadas 15 mm)
+# ---------------------------------------------------------------------------
+# Regla:
+#   - Si el proyecto contiene CUALQUIER acabado LAC no estándar (Marga, Agave,
+#     Noche, Argil, Zafiro, Negro, Ave, Curry, Celeste, Humo, Tinta, Pino…)
+#     → todas las piezas LAC del proyecto deben ir PEGADAS (gap = 0), incluidos
+#     los DXFs de acabado estándar (Roto/Crema/Blanco/Seda).
+#   - Si todos los acabados LAC del proyecto son estándar → todas las piezas
+#     LAC deben ir SEPARADAS exactamente 15 mm.
+# Tolerancia (ambos casos): EPS = 0.5 mm para absorber ruido floating-point.
+# ---------------------------------------------------------------------------
+
+def _bbox_solapan(a: dict, b: dict, eje: str, fraccion_min: float) -> bool:
+    """¿Los bboxes se solapan en el eje dado al menos `fraccion_min` de la
+    extensión menor? Eje 'Y' → comparan rangos [ymin,ymax] (piezas vecinas
+    en X). Eje 'X' → comparan rangos [xmin,xmax] (vecinas en Y)."""
+    lo_a, hi_a = a[f"{eje}min"], a[f"{eje}max"]
+    lo_b, hi_b = b[f"{eje}min"], b[f"{eje}max"]
+    solape = max(0.0, min(hi_a, hi_b) - max(lo_a, lo_b))
+    extension = min(hi_a - lo_a, hi_b - lo_b)
+    if extension <= 0:
+        return False
+    return solape / extension >= fraccion_min
+
+
+def _gap_entre(a: dict, b: dict, eje: str) -> float:
+    """Gap entre dos bboxes en el eje dado. Negativo si se solapan."""
+    lo_a, hi_a = a[f"{eje}min"], a[f"{eje}max"]
+    lo_b, hi_b = b[f"{eje}min"], b[f"{eje}max"]
+    return max(lo_a, lo_b) - min(hi_a, hi_b)
+
+
+def _vecino_directo(
+    a: dict,
+    contornos: list[dict],
+    eje: str,
+    eje_perp: str,
+    solape_min: float,
+    eps: float,
+) -> tuple[dict | None, float]:
+    """Devuelve (vecino, gap) donde `vecino` es el contorno más cercano de `a`
+    en la dirección positiva de `eje` (a su derecha en X / por encima en Y),
+    que solapa en `eje_perp` y cuyo borde inicial empieza en o después del
+    borde final de `a`. Si no existe, devuelve (None, ∞).
+
+    Solo se evalúa la dirección positiva — cada par a↔b así se reporta una
+    única vez (la dirección negativa se cubre cuando b se evalúa desde la
+    perspectiva de a).
+    """
+    a_max = a[f"{eje}max"]
+    mejor: dict | None = None
+    mejor_gap = float("inf")
+    for b in contornos:
+        if b is a:
+            continue
+        if not _bbox_solapan(a, b, eje_perp, solape_min):
+            continue
+        b_min = b[f"{eje}min"]
+        # b debe empezar en o después del fin de a (tolerancia EPS)
+        if b_min < a_max - eps:
+            continue
+        gap = b_min - a_max
+        if gap < mejor_gap:
+            mejor_gap = gap
+            mejor = b
+    return mejor, mejor_gap
+
+
+def check_nesting_laca(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
+    """C-45: Disposición de piezas LAC en el nesting según régimen del proyecto.
+
+    Régimen NO ESTÁNDAR (proyecto con ≥1 acabado LAC fuera de la lista estándar):
+      → todas las piezas LAC del proyecto pegadas (gap = 0 ± EPS).
+    Régimen ESTÁNDAR (todos los acabados LAC del proyecto son estándar):
+      → todas las piezas LAC separadas exactamente 15 mm (± EPS).
+
+    Bloquea: Sí.
+    """
+    ID = "C-45"
+    DESC = "Disposición piezas LAC en nesting (pegado vs separado 15 mm)"
+
+    s = _si_no_dxfs(ID, DESC, dxfs)
+    if s:
+        return s
+
+    cfg = reglas["nesting_laca"]
+    layer_no_std: str = cfg["layer_contorno_no_estandar"]
+    layer_std: str = cfg["layer_contorno_estandar"]
+    gap_pegado: float = float(cfg["gap_pegado_mm"])
+    gap_separado: float = float(cfg["gap_separado_mm"])
+    eps: float = float(cfg["eps_mm"])
+    solape_min: float = float(cfg["solape_vecindad"])
+    lac_std = {
+        a.lower()
+        for a in reglas["layers"]["corte_perimetral"].get("lac_acabados_estandar", [])
+    }
+
+    dxfs_lac = [d for d in dxfs if d.gama == "LAC"]
+    if not dxfs_lac:
+        return _skip(ID, DESC, "Proyecto sin DXFs de gama LAC", _GRUPO)
+
+    proyecto_no_estandar = any(
+        d.acabado.lower() not in lac_std for d in dxfs_lac
+    )
+    gap_esperado = gap_pegado if proyecto_no_estandar else gap_separado
+    layer_objetivo = layer_no_std if proyecto_no_estandar else layer_std
+
+    errores: list[str] = []
+    algun_par_evaluado = False
+
+    for dxf in dxfs_lac:
+        contornos = [
+            c for c in dxf.piezas_contorno if c["layer"] == layer_objetivo
+        ]
+        # Fallback: si el layer esperado está vacío, prueba con el otro
+        # layer de contorno (proyectos transitorios o DXFs de Roto/Crema en
+        # régimen no estándar que aún arrastren CUTEXT en alguna pieza).
+        if len(contornos) < 2:
+            otros = [
+                c for c in dxf.piezas_contorno
+                if c["layer"] in (layer_std, layer_no_std)
+            ]
+            if len(otros) >= 2:
+                contornos = otros
+        if len(contornos) < 2:
+            continue
+
+        # Solo comparamos VECINOS DIRECTOS — la siguiente pieza en cada
+        # dirección que (a) está estrictamente más a la derecha/arriba y
+        # (b) solapa en el eje perpendicular. Comparar todos los pares
+        # generaría falsos positivos del tipo A↔C cuando hay una B entre
+        # medias (gap acumulado).
+        for a in contornos:
+            for eje, eje_perp in (("x", "y"), ("y", "x")):
+                vecino, gap = _vecino_directo(a, contornos, eje, eje_perp,
+                                              solape_min, eps)
+                if vecino is None:
+                    continue
+                algun_par_evaluado = True
+                if abs(gap - gap_esperado) > eps:
+                    errores.append(
+                        _formatear_error(
+                            dxf, a, vecino, gap, gap_esperado, eje.upper(),
+                            proyecto_no_estandar, dxfs_lac, lac_std,
+                        )
+                    )
+
+    if not algun_par_evaluado:
+        return _skip(
+            ID, DESC,
+            "Ningún DXF LAC con ≥2 piezas vecinas para evaluar",
+            _GRUPO,
+        )
+    return _resultado(ID, DESC, errores, True, _GRUPO)
+
+
+def _formatear_error(
+    dxf: DXFDoc,
+    a: dict,
+    b: dict,
+    gap: float,
+    gap_esperado: float,
+    eje: str,
+    proyecto_no_estandar: bool,
+    dxfs_lac: list[DXFDoc],
+    lac_std: set[str],
+) -> str:
+    """Mensaje de error C-45 incluyendo el motivo del régimen."""
+    wa = a["xmax"] - a["xmin"]
+    ha = a["ymax"] - a["ymin"]
+    wb = b["xmax"] - b["xmin"]
+    hb = b["ymax"] - b["ymin"]
+    if proyecto_no_estandar:
+        no_std_acabs = sorted({
+            d.acabado for d in dxfs_lac if d.acabado.lower() not in lac_std
+        })
+        motivo = (
+            f"Proyecto contiene LAC no estándar ({', '.join(no_std_acabs)}) "
+            f"→ todas las piezas LAC deben ir pegadas (gap=0)."
+        )
+    else:
+        motivo = (
+            "Proyecto 100% LAC estándar → todas las piezas LAC deben ir "
+            "separadas exactamente 15 mm."
+        )
+    return (
+        f"{dxf.nombre} (LAC {dxf.acabado}): piezas separadas {gap:.1f}mm "
+        f"en eje {eje} (esperado: {gap_esperado:.0f}mm). "
+        f"Pieza A {wa:.0f}×{ha:.0f}mm @ ({a['xmin']:.0f},{a['ymin']:.0f}); "
+        f"Pieza B {wb:.0f}×{hb:.0f}mm @ ({b['xmin']:.0f},{b['ymin']:.0f}). "
+        f"{motivo}"
+    )

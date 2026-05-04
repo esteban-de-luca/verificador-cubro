@@ -1,4 +1,4 @@
-"""tests/test_checks_dxf.py — Tests de C-30 a C-44."""
+"""tests/test_checks_dxf.py — Tests de C-30 a C-45."""
 
 from __future__ import annotations
 import sys
@@ -26,6 +26,7 @@ from checks.checks_dxf import (
     check_tirantes,
     check_layers_desuso,
     check_distancia_bisagras,
+    check_nesting_laca,
 )
 
 
@@ -961,3 +962,148 @@ class TestC44:
             [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
         )
         assert r.resultado == "PASS", r.detalle
+
+
+# ---------------------------------------------------------------------------
+# C-45: disposición piezas LAC en nesting (pegadas vs separadas 15 mm)
+# ---------------------------------------------------------------------------
+
+L_LACA = "10_12-CONTORNO LACA"
+L_CUTEXT = "10_12-CUTEXT-EM5-Z18"
+
+
+def _dxf_lac(acabado: str, contornos: list[dict],
+             nombre: str | None = None) -> "DXFDoc":
+    """DXFDoc LAC con contornos arbitrarios — para tests de C-45."""
+    return DXFDoc(
+        nombre=nombre or f"EU-99999_X_MDF_LACA_{acabado.upper()}_T1.dxf",
+        tablero_num=1,
+        material="MDF", gama="LAC", acabado=acabado,
+        piezas_contorno=contornos,
+    )
+
+
+def _piezas_en_fila(n: int, gap: float, ancho: float = 398, alto: float = 596,
+                    layer: str = L_LACA, x0: float = 0, y0: float = 0) -> list[dict]:
+    """Genera n bboxes en una fila horizontal con `gap` mm entre piezas."""
+    out = []
+    x = x0
+    for _ in range(n):
+        out.append(_bbox(x, x + ancho, y0, y0 + alto, layer=layer))
+        x += ancho + gap
+    return out
+
+
+class TestC45:
+
+    # --- Ejemplo 1: LAC Marga único, separadas 15 mm → FAIL ---
+    def test_solo_marga_separadas_15_falla(self, reglas):
+        dxf = _dxf_lac("Marga", _piezas_en_fila(3, gap=15))
+        r = check_nesting_laca([dxf], reglas)
+        assert r.resultado == "FAIL"
+        assert "15" in r.detalle and "Marga" in r.detalle
+
+    # --- Ejemplo 2: LAC Marga único, pegadas → PASS ---
+    def test_solo_marga_pegadas_pasa(self, reglas):
+        dxf = _dxf_lac("Marga", _piezas_en_fila(4, gap=0))
+        r = check_nesting_laca([dxf], reglas)
+        assert r.resultado == "PASS"
+
+    # --- Ejemplo 3: LAC Roto único, separadas 15 mm → PASS ---
+    def test_solo_roto_separadas_15_pasa(self, reglas):
+        dxf = _dxf_lac("Roto", _piezas_en_fila(5, gap=15, layer=L_CUTEXT))
+        r = check_nesting_laca([dxf], reglas)
+        assert r.resultado == "PASS"
+
+    # --- Ejemplo 4: LAC Roto único, separadas 12 mm → FAIL ---
+    def test_solo_roto_separadas_12_falla(self, reglas):
+        dxf = _dxf_lac("Roto", _piezas_en_fila(5, gap=12, layer=L_CUTEXT))
+        r = check_nesting_laca([dxf], reglas)
+        assert r.resultado == "FAIL"
+        assert "15" in r.detalle  # gap esperado
+
+    # --- Ejemplo 5: LAC Roto único, pegadas → FAIL ---
+    def test_solo_roto_pegadas_falla(self, reglas):
+        dxf = _dxf_lac("Roto", _piezas_en_fila(5, gap=0, layer=L_CUTEXT))
+        r = check_nesting_laca([dxf], reglas)
+        assert r.resultado == "FAIL"
+
+    # --- Ejemplo 6: Roto + Marga, DXF Roto separado 15 → FAIL ---
+    def test_mixto_dxf_roto_separado_15_falla(self, reglas):
+        # En proyecto contaminado, también el DXF de Roto usa CONTORNO LACA
+        dxf_roto = _dxf_lac("Roto", _piezas_en_fila(4, gap=15))
+        dxf_marga = _dxf_lac("Marga", _piezas_en_fila(2, gap=0))
+        r = check_nesting_laca([dxf_roto, dxf_marga], reglas)
+        assert r.resultado == "FAIL"
+        # El error menciona Marga como motivo de la regla aplicada al Roto
+        assert "Roto" in r.detalle and "Marga" in r.detalle
+
+    # --- Ejemplo 7: Roto + Marga, DXF Roto pegado → PASS ---
+    def test_mixto_dxf_roto_pegado_pasa(self, reglas):
+        dxf_roto = _dxf_lac("Roto", _piezas_en_fila(4, gap=0))
+        dxf_marga = _dxf_lac("Marga", _piezas_en_fila(3, gap=0))
+        r = check_nesting_laca([dxf_roto, dxf_marga], reglas)
+        assert r.resultado == "PASS"
+
+    # --- Ejemplo 8: Roto + Marga, DXF Marga pegado → PASS ---
+    def test_mixto_dxf_marga_pegado_pasa(self, reglas):
+        dxf_roto = _dxf_lac("Roto", _piezas_en_fila(2, gap=0))
+        dxf_marga = _dxf_lac("Marga", _piezas_en_fila(4, gap=0))
+        r = check_nesting_laca([dxf_roto, dxf_marga], reglas)
+        assert r.resultado == "PASS"
+
+    # --- Ejemplo 9: Blanco + Crema + Seda, separadas 8 → FAIL ---
+    def test_todos_estandar_gap_incorrecto_falla(self, reglas):
+        dxfs = [
+            _dxf_lac("Blanco", _piezas_en_fila(3, gap=8, layer=L_CUTEXT)),
+            _dxf_lac("Crema",  _piezas_en_fila(2, gap=15, layer=L_CUTEXT)),
+            _dxf_lac("Seda",   _piezas_en_fila(2, gap=15, layer=L_CUTEXT)),
+        ]
+        r = check_nesting_laca(dxfs, reglas)
+        assert r.resultado == "FAIL"
+        assert "Blanco" in r.detalle
+
+    # --- Ejemplo 10: Marga + Roto + Blanco, gap 0.3 (ruido) → PASS ---
+    def test_ruido_floating_point_dentro_de_eps_pasa(self, reglas):
+        # Régimen pegado, gap 0.3 mm → dentro de EPS=0.5
+        dxfs = [
+            _dxf_lac("Marga",  _piezas_en_fila(2, gap=0)),
+            _dxf_lac("Roto",   _piezas_en_fila(2, gap=0.3)),
+            _dxf_lac("Blanco", _piezas_en_fila(3, gap=0.3)),
+        ]
+        r = check_nesting_laca(dxfs, reglas)
+        assert r.resultado == "PASS"
+
+    # --- Edge cases ---
+
+    def test_skip_sin_dxfs(self, reglas):
+        r = check_nesting_laca([], reglas)
+        assert r.resultado == "SKIP"
+
+    def test_skip_sin_dxfs_lac(self, reglas):
+        # Solo gama LAM → C-45 no aplica
+        dxf = DXFDoc(
+            nombre="EU-99999_X_PLY_LAMINADO_PALE_T1.dxf", tablero_num=1,
+            material="PLY", gama="LAM", acabado="Pale",
+            piezas_contorno=_piezas_en_fila(3, gap=15, layer=L_CUTEXT),
+        )
+        r = check_nesting_laca([dxf], reglas)
+        assert r.resultado == "SKIP"
+
+    def test_skip_dxf_lac_con_una_sola_pieza(self, reglas):
+        dxf = _dxf_lac("Noche", _piezas_en_fila(1, gap=0))
+        r = check_nesting_laca([dxf], reglas)
+        assert r.resultado == "SKIP"
+
+    # --- Caso real EU-18071: 3 piezas Marga separadas 15 mm → FAIL ---
+    def test_caso_real_eu18071(self, reglas):
+        contornos = [
+            _bbox(7.5, 405.5, -603.5, -7.5, layer=L_LACA),     # 398×596
+            _bbox(420.5, 818.5, -603.5, -7.5, layer=L_LACA),   # 398×596 — gap 15 vs anterior
+            _bbox(833.5, 981.5, -605.5, -7.5, layer=L_LACA),   # 148×598 — gap 15 vs anterior
+        ]
+        dxf = _dxf_lac("Marga", contornos,
+                       nombre="EU-18071_INC_X_MDF LACA MARGA_T1.dxf")
+        r = check_nesting_laca([dxf], reglas)
+        assert r.resultado == "FAIL"
+        assert "15" in r.detalle
