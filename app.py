@@ -109,19 +109,13 @@ def _url_drive(folder_id: str) -> str:
     return f"https://drive.google.com/drive/folders/{folder_id}"
 
 def _subir_informe_drive(informe: InformeFinal, proyecto: dict) -> None:
-    """Sube el informe .txt a 1-Informacion (o raíz si no existe) en Drive."""
+    """Sube (o sobreescribe) el informe .txt en la raíz de la carpeta del proyecto."""
     from drive.gestor import subir_informe_txt
-    from drive.navegador import _buscar_subcarpeta_por_nombre
-    from drive.descargador import _SUBCARPETA_ARCHIVOS
     nombre_proyecto = proyecto["nombre_limpio"]
     nombre_archivo = f"informe_{nombre_proyecto}.txt"
     txt = _informe_a_texto(informe, nombre_proyecto)
     try:
-        sub = _buscar_subcarpeta_por_nombre(
-            get_servicio(), proyecto["id"], _SUBCARPETA_ARCHIVOS
-        )
-        carpeta_id = sub["id"] if sub else proyecto["id"]
-        subir_informe_txt(get_servicio(), carpeta_id, nombre_archivo, txt)
+        subir_informe_txt(get_servicio(), proyecto["id"], nombre_archivo, txt)
         st.toast(f"Informe guardado en Drive: {nombre_archivo}", icon="📄")
     except Exception as exc:
         st.toast(f"No se pudo guardar en Drive: {exc}", icon="⚠️")
