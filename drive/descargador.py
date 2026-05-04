@@ -20,7 +20,6 @@ from google.auth.transport.requests import AuthorizedSession
 
 from drive.navegador import listar_archivos
 
-_SUBCARPETA_ARCHIVOS = "1-Informacion"
 _MAX_WORKERS = 8
 
 # Una AuthorizedSession por thread — se crea una sola vez por thread y se reutiliza.
@@ -62,8 +61,8 @@ def descargar_carpeta(servicio: Any, folder_id: str) -> dict[str, io.BytesIO]:
     """
     Descarga todos los archivos de una carpeta de proyecto a memoria en paralelo.
 
-    Si existe una subcarpeta llamada '1-Informacion', descarga los archivos
-    de ahí (estructura habitual de CUBRO). Si no existe, usa la carpeta raíz.
+    Los archivos del fichero de corte viven directamente en la raíz de la
+    carpeta del proyecto (sin subcarpetas intermedias).
 
     Args:
         servicio: cliente Drive v3 (solo para listar/navegar, no para descargar).
@@ -72,11 +71,7 @@ def descargar_carpeta(servicio: Any, folder_id: str) -> dict[str, io.BytesIO]:
     Returns:
         Dict {nombre_archivo: BytesIO}.
     """
-    from drive.navegador import _buscar_subcarpeta_por_nombre
-    sub = _buscar_subcarpeta_por_nombre(servicio, folder_id, _SUBCARPETA_ARCHIVOS)
-    carpeta_id = sub["id"] if sub else folder_id
-
-    archivos = listar_archivos(servicio, carpeta_id)
+    archivos = listar_archivos(servicio, folder_id)
     if not archivos:
         return {}
 

@@ -231,8 +231,7 @@ class TestDescargador:
             downloader.next_chunk.return_value = (MagicMock(), True)
             return downloader
 
-        with patch("drive.descargador.MediaIoBaseDownload", side_effect=_fake_downloader_factory), \
-             patch("drive.navegador._buscar_subcarpeta_por_nombre", return_value=None):
+        with patch("drive.descargador.MediaIoBaseDownload", side_effect=_fake_downloader_factory):
             resultado = descargador.descargar_carpeta(servicio, "folder123")
 
         assert set(resultado.keys()) == {
@@ -247,8 +246,7 @@ class TestDescargador:
     def test_carpeta_vacia_devuelve_dict_vacio(self):
         """FAIL semántico: sin archivos → dict vacío, no excepción."""
         servicio = _hacer_servicio_mock([{"files": []}])
-        with patch("drive.navegador._buscar_subcarpeta_por_nombre", return_value=None):
-            assert descargador.descargar_carpeta(servicio, "folder_vacio") == {}
+        assert descargador.descargar_carpeta(servicio, "folder_vacio") == {}
 
 
 # ===========================================================================
