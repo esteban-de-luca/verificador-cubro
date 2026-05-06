@@ -136,7 +136,7 @@ def _log_notion(informe: InformeFinal) -> None:
         st.toast(f"Notion no disponible: {exc}", icon="⚠️")
 
 
-_RE_ID_PROYECTO = re.compile(r"((?:EU|SP)-?\d{5}(?:-INC)?)", re.IGNORECASE)
+_RE_ID_PROYECTO = re.compile(r"((?:EU|SP|C[1-5])-?\d{5}(?:-INC)?)", re.IGNORECASE)
 
 def _extraer_id_proyecto(nombre_limpio: str) -> str:
     """Extrae el ID de proyecto del nombre de carpeta.
