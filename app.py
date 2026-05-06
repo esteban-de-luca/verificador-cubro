@@ -5,8 +5,11 @@ Vista: Verificar proyecto individual
 
 from __future__ import annotations
 
+import faulthandler
 import re
 from pathlib import Path
+
+faulthandler.enable()
 
 import streamlit as st
 
