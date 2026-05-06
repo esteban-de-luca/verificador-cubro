@@ -169,7 +169,7 @@ def check_num_dxf_vs_ot(dxfs: list[DXFDoc], ot: OTData) -> CheckResult:
 # ---------------------------------------------------------------------------
 
 _RE_NESTING_PDF = re.compile(
-    r"(?:EU|SP)-?\d+.*?(PLY|MDF).*?\.pdf$", re.IGNORECASE
+    r"(?:EU|SP|C[1-5])-?\d+.*?(PLY|MDF).*?\.pdf$", re.IGNORECASE
 )
 
 
