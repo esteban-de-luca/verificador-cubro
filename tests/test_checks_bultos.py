@@ -153,6 +153,16 @@ class TestC53:
         r = check_formato_id_bulto(filas, "EU-21822-INC")
         assert r.resultado == "PASS"
 
+    def test_pass_inc_underscore_equivale_a_guion(self):
+        # Caso real SP-17124-INC: el EAN puede emitir 'CUB-SP-17124_INC-1-4'
+        # con guion bajo en vez de guion antes de INC. Debe aceptarse.
+        filas = [
+            _fila(id_bulto="CUB-SP-17124_INC-1-4"),
+            _fila(id_bulto="CUB-SP-17124_INC-2-4"),
+        ]
+        r = check_formato_id_bulto(filas, "SP-17124-INC")
+        assert r.resultado == "PASS"
+
 
 # ---------------------------------------------------------------------------
 # C-54

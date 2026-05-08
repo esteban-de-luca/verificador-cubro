@@ -21,8 +21,9 @@ from checks._helpers import _pass, _fail, _warn, _skip, _resultado
 _GRUPO = "Logistica"
 
 # Regex para validar formato de ID de bulto: CUB-{ID_PROYECTO}-{N}-{TOTAL}
+# Acepta '-INC' o '_INC' indistintamente como sufijo de proyecto INC.
 _RE_ID_BULTO = re.compile(
-    r"^CUB-(?:EU|SP|C[1-5])-?\d{5}(?:-INC)?-\d+-\d+$", re.IGNORECASE
+    r"^CUB-(?:EU|SP|C[1-5])-?\d{5}(?:[-_]INC)?-\d+-\d+$", re.IGNORECASE
 )
 
 
@@ -94,14 +95,15 @@ def check_piezas_sin_duplicados(filas_ean: list[FilaEAN]) -> CheckResult:
 
 def check_formato_id_bulto(filas_ean: list[FilaEAN], id_proyecto: str) -> CheckResult:
     """C-53: Todos los IDs de bulto siguen el formato CUB-{ID}-{N}-{TOTAL}. Bloquea: Sí."""
-    id_norm = id_proyecto.upper().replace("-", "")
+    id_norm = id_proyecto.upper().replace("-", "").replace("_", "")
     errores = []
     for f in filas_ean:
         if not _RE_ID_BULTO.match(f.id_bulto):
             errores.append(f"ID inválido: '{f.id_bulto}'")
         else:
-            # Verificar que el ID del proyecto en el bulto coincide
-            partes = f.id_bulto.upper().split("-")
+            # Verificar que el ID del proyecto en el bulto coincide.
+            # Tratamos '_' como '-' para tolerar 'CUB-SP-17124_INC-1-4'.
+            partes = f.id_bulto.upper().replace("_", "-").split("-")
             # CUB-EU-21822-1-5 → partes = ['CUB','EU','21822','1','5']
             # CUB-EU21822-1-5  → partes = ['CUB','EU21822','1','5'] (sin guión en ID)
             id_en_bulto = "".join(p for p in partes[1:-2] if p.isalnum())
