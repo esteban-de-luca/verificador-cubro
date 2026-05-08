@@ -450,6 +450,46 @@ class TestC37:
         r = check_handcut_vs_tiradores(dxfs, ot, reglas)
         assert r.resultado == "SKIP"
 
+    # --- Modelos compuestos 'Round/Square' (varias piezas con tiradores
+    # distintos en la misma columna del cuadro INFORMACION DE CORTE) ---
+
+    def test_pass_modelo_compuesto_round_square(self, reglas):
+        """Bug real SP-21613 Apto 1: Square(5) + Round/Square(19) → 24 HANDCUT esperados."""
+        layer = "9_11-HANDCUT-EM5-Z18"
+        dxfs = [_dxf(conteos={layer: 24})]
+        ot = _ot(num_tiradores=24, modelos_tiradores=["Square", "Round/Square"],
+                 tiradores_por_modelo={"Square": 5, "Round/Square": 19})
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "PASS"
+
+    def test_fail_modelo_compuesto_no_coincide(self, reglas):
+        """Square(5) + Round/Square(19) pero solo 20 HANDCUT en DXF → FAIL."""
+        layer = "9_11-HANDCUT-EM5-Z18"
+        dxfs = [_dxf(conteos={layer: 20})]
+        ot = _ot(num_tiradores=24, modelos_tiradores=["Square", "Round/Square"],
+                 tiradores_por_modelo={"Square": 5, "Round/Square": 19})
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "FAIL"
+        assert "20" in r.detalle and "24" in r.detalle
+
+    def test_skip_modelo_compuesto_mixto_ambiguo(self, reglas):
+        """'Round/Plantea': Round genera HANDCUT pero Plantea no → SKIP por ambigüedad."""
+        layer = "9_11-HANDCUT-EM5-Z18"
+        dxfs = [_dxf(conteos={layer: 5})]
+        ot = _ot(num_tiradores=10, modelos_tiradores=["Round/Plantea"],
+                 tiradores_por_modelo={"Round/Plantea": 10})
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "SKIP"
+        assert "ambig" in r.detalle.lower()
+
+    def test_skip_modelo_compuesto_sin_geometria(self, reglas):
+        """'Bar/Superline': ningún sub-modelo genera HANDCUT → SKIP."""
+        dxfs = [_dxf(conteos={})]
+        ot = _ot(num_tiradores=4, modelos_tiradores=["Bar/Superline"],
+                 tiradores_por_modelo={"Bar/Superline": 4})
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "SKIP"
+
     # --- Casos base ---
 
     def test_skip_ot_sin_tiradores(self, reglas):
