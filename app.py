@@ -112,16 +112,36 @@ def _url_drive(folder_id: str) -> str:
     return f"https://drive.google.com/drive/folders/{folder_id}"
 
 def _subir_informe_drive(informe: InformeFinal, proyecto: dict) -> None:
-    """Sube (o sobreescribe) el informe .txt en la raíz de la carpeta del proyecto."""
+    """Sube (o sobreescribe) el informe .txt en dos sitios:
+
+    1. La carpeta del proyecto (registro junto a los ficheros de corte).
+    2. La carpeta central de informes (registro global para análisis agregado).
+
+    En ambos casos, si ya existe un informe con el mismo nombre, se
+    sobreescribe — así una segunda verificación del mismo proyecto deja
+    siempre la versión más reciente.
+    """
     from drive.gestor import subir_informe_txt
     nombre_proyecto = proyecto["nombre_limpio"]
     nombre_archivo = f"informe_{nombre_proyecto}.txt"
     txt = _informe_a_texto(informe, nombre_proyecto)
+
     try:
         subir_informe_txt(get_servicio(), proyecto["id"], nombre_archivo, txt)
         st.toast(f"Informe guardado en Drive: {nombre_archivo}", icon="📄")
     except Exception as exc:
         st.toast(f"No se pudo guardar en Drive: {exc}", icon="⚠️")
+
+    try:
+        subir_informe_txt(
+            get_servicio(),
+            config.drive_informes_central_id(),
+            nombre_archivo,
+            txt,
+        )
+        st.toast("Informe archivado en carpeta central", icon="🗂️")
+    except Exception as exc:
+        st.toast(f"No se pudo archivar en carpeta central: {exc}", icon="⚠️")
 
 
 def _log_notion(informe: InformeFinal) -> None:

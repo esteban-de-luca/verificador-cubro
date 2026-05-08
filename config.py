@@ -111,6 +111,19 @@ def drive_carpintek_id() -> str:
     return valor
 
 
+def drive_informes_central_id() -> str:
+    """ID de la carpeta central donde se archivan todos los informes .txt.
+
+    Permite tener un registro global de verificaciones para análisis agregado
+    de FAILs/WARNs. Override opcional vía Streamlit Secrets o env var; si no
+    se configura, se usa el ID fijo de la carpeta de producción.
+    """
+    valor = _get_secret(
+        "drive", "DRIVE_INFORMES_CENTRAL_ID", "DRIVE_INFORMES_CENTRAL_ID"
+    )
+    return valor or "1_8hpT5cymnzgAS0Q9SIpf4YbEt5QEpPZ"
+
+
 # ---------------------------------------------------------------------------
 # Credenciales Google Service Account
 # ---------------------------------------------------------------------------
