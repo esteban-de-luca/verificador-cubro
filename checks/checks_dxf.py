@@ -234,6 +234,20 @@ def check_layer_desbaste_tirador(
 # C-37: Recuento HANDCUT == nº tiradores declarados en OT
 # ---------------------------------------------------------------------------
 
+def _modelo_genera_handcut(modelo: str, validos: set[str]) -> bool | None:
+    """True si el modelo (o TODOS sus sub-modelos en 'A/B') generan HANDCUT.
+    False si NINGUNO. None si mixto (algunos sí y otros no → ambigüedad)."""
+    sub = [s.strip().title() for s in modelo.split("/") if s.strip()]
+    if not sub:
+        return False
+    en_lista = [s in validos for s in sub]
+    if all(en_lista):
+        return True
+    if not any(en_lista):
+        return False
+    return None
+
+
 def check_handcut_vs_tiradores(
     dxfs: list[DXFDoc], ot: OTData, reglas: dict
 ) -> CheckResult:
@@ -247,12 +261,14 @@ def check_handcut_vs_tiradores(
         return _skip("C-37", "Recuento HANDCUT == tiradores OT",
                      "OT sin tiradores declarados", _GRUPO)
 
-    modelos_con_handcut: set[str] = {
-        m for m in ot.modelos_tiradores
-        if m.title() in reglas.get("tiradores_con_geometria_dxf", [])
+    validos: set[str] = set(reglas.get("tiradores_con_geometria_dxf", []))
+    # Clasifica cada modelo declarado en la OT: True/False/None (mixto)
+    estado_modelos: dict[str, bool | None] = {
+        m: _modelo_genera_handcut(m, validos) for m in ot.modelos_tiradores
     }
 
-    if not modelos_con_handcut:
+    if all(v is False for v in estado_modelos.values()):
+        # Ningún modelo genera HANDCUT → SKIP (Plantea, Bar, Superline…)
         modelos_str = ", ".join(ot.modelos_tiradores) if ot.modelos_tiradores else "desconocido"
         return _skip(
             "C-37", "Recuento HANDCUT == tiradores OT",
@@ -262,17 +278,26 @@ def check_handcut_vs_tiradores(
     layer_handcut: str = reglas["layers"]["tirador_handcut"]
     n_handcut = _sum_conteo(dxfs, layer_handcut)
 
-    # Compara solo contra tiradores cuyo modelo genera geometría HANDCUT;
-    # los modelos sin geometría (Plantea, Bar, Superline…) no aparecen en DXF.
+    # Suma cantidades de los modelos que generan HANDCUT.
+    # Modelo mixto (p.ej. 'Round/Plantea') → SKIP por ambigüedad: la cantidad
+    # agregada de la columna no permite repartir entre Round (con HANDCUT) y
+    # Plantea (sin HANDCUT).
     if ot.tiradores_por_modelo:
-        n_esperados = sum(
-            n for modelo, n in ot.tiradores_por_modelo.items()
-            if modelo.title() in modelos_con_handcut
-        )
+        n_esperados = 0
+        for modelo, n in ot.tiradores_por_modelo.items():
+            estado = _modelo_genera_handcut(modelo, validos)
+            if estado is True:
+                n_esperados += n
+            elif estado is None:
+                return _skip(
+                    "C-37", "Recuento HANDCUT == tiradores OT",
+                    f"Modelo mixto '{modelo}' con sub-modelos con y sin "
+                    f"geometría HANDCUT — ambigüedad de recuento", _GRUPO,
+                )
     else:
         # Fallback si el extractor no pudo emparejar columnas: solo es seguro
         # comparar con el total cuando todos los modelos generan HANDCUT.
-        if set(ot.modelos_tiradores) == modelos_con_handcut:
+        if all(v is True for v in estado_modelos.values()):
             n_esperados = ot.num_tiradores
         else:
             return _skip(
