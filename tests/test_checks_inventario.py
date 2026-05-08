@@ -107,6 +107,17 @@ class TestC01:
         r = check_id_consistente(nombres, "EU-21822-INC")
         assert r.resultado == "PASS"
 
+    def test_inc_underscore_equivale_a_guion(self):
+        # Caso real: SP-17124-INC en carpeta y OT/DESPIECE, pero EAN usa "_INC"
+        # en vez de "-INC". Debe considerarse el mismo ID.
+        nombres = [
+            "DESPIECE_SP-17124-INC.xlsx",
+            "OT_SP-17124-INC.pdf",
+            "EAN LOGISTIC_SP-17124_INC.csv",
+        ]
+        r = check_id_consistente(nombres, "SP-17124-INC")
+        assert r.resultado == "PASS"
+
 
 # ---------------------------------------------------------------------------
 # C-02

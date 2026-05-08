@@ -61,7 +61,7 @@ def check_documentos_presentes(nombres_archivos: list[str], reglas: dict) -> Che
 # C-01: ID de proyecto consistente en todos los archivos
 # ---------------------------------------------------------------------------
 
-_RE_ID_ARCHIVO = re.compile(r"(?<![A-Za-z])((?:EU|SP)-?\d{5}(?:-INC)?)", re.IGNORECASE)
+_RE_ID_ARCHIVO = re.compile(r"(?<![A-Za-z])((?:EU|SP)-?\d{5}(?:[-_]INC)?)", re.IGNORECASE)
 
 
 def check_id_consistente(nombres_archivos: list[str], id_proyecto: str) -> CheckResult:
@@ -69,11 +69,11 @@ def check_id_consistente(nombres_archivos: list[str], id_proyecto: str) -> Check
     C-01: Todos los archivos que contienen un ID de proyecto usan el mismo.
     Bloquea: Sí.
     """
-    id_norm = id_proyecto.upper().replace("-", "")
+    id_norm = id_proyecto.upper().replace("-", "").replace("_", "")
     errores = []
     for nombre in nombres_archivos:
         for m in _RE_ID_ARCHIVO.finditer(nombre):
-            id_en_archivo = m.group(1).upper().replace("-", "")
+            id_en_archivo = m.group(1).upper().replace("-", "").replace("_", "")
             if id_en_archivo != id_norm:
                 errores.append(f"{nombre}: ID encontrado '{m.group(1)}' ≠ '{id_proyecto}'")
     return _resultado("C-01", "ID proyecto consistente en todos los archivos", errores, True, _GRUPO)
