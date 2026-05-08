@@ -244,13 +244,27 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
     m_tir = _RE_TIRADORES.search(texto)
 
     # Modelos de tirador — fila "Tiradores  Superline" (sin #)
-    modelos_tiradores: list[str] = list(dict.fromkeys(
+    # Mantenemos orden de aparición y duplicados por columna para emparejar con cantidades.
+    modelos_orden: list[str] = [
         tok.strip().title()
         for m in _RE_MODELO_TIRADOR.finditer(texto)
         for tok in m.group(1).split()
         if tok.strip() and tok.strip() != "-"
-    ))
-    num_tiradores = sum(int(n) for n in m_tir.group(1).split()) if m_tir else 0
+    ]
+    modelos_tiradores: list[str] = list(dict.fromkeys(modelos_orden))
+
+    cantidades_orden: list[int] = (
+        [int(n) for n in m_tir.group(1).split()] if m_tir else []
+    )
+    num_tiradores = sum(cantidades_orden)
+
+    # Empareja columna a columna modelo↔cantidad para C-37: en proyectos con
+    # mezcla (p. ej. Plantea + Round), permite filtrar solo los modelos cuyo
+    # tirador genera geometría HANDCUT en DXF.
+    tiradores_por_modelo: dict[str, int] = {}
+    if len(modelos_orden) == len(cantidades_orden):
+        for modelo, n in zip(modelos_orden, cantidades_orden):
+            tiradores_por_modelo[modelo] = tiradores_por_modelo.get(modelo, 0) + n
 
     # Tableros por material (tabla INFORMACION DE CORTE)
     tableros, materiales_sin_cantidad = _parsear_tabla_corte(texto)
@@ -324,4 +338,5 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
         observaciones_produccion=obs_prod,
         ids_piezas=ids_piezas,
         modelos_tiradores=modelos_tiradores,
+        tiradores_por_modelo=tiradores_por_modelo,
     )

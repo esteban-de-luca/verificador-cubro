@@ -779,6 +779,41 @@ class TestLeerOT:
             ot = leer_ot(io.BytesIO(b"x"))
         assert ot.num_tiradores == 26
 
+    def test_tiradores_por_modelo_empareja_columnas(self):
+        """PASS: 'Tiradores Plantea Round' + '# Tiradores 9 4' → {'Plantea': 9, 'Round': 4}."""
+        texto = (
+            "SP-21613\n"
+            "Tiradores Plantea Round\n"
+            "# Tiradores 9 4\n"
+        )
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.num_tiradores == 13
+        assert ot.tiradores_por_modelo == {"Plantea": 9, "Round": 4}
+
+    def test_tiradores_por_modelo_acumula_repetidos(self):
+        """PASS: dos columnas Round con cantidades 3 y 5 → suma {'Round': 8}."""
+        texto = (
+            "EU-99999\n"
+            "Tiradores Round Round\n"
+            "# Tiradores 3 5\n"
+        )
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.tiradores_por_modelo == {"Round": 8}
+
+    def test_tiradores_por_modelo_vacio_si_desbalance(self):
+        """PASS: si nº modelos != nº cantidades, no se intenta emparejar."""
+        texto = (
+            "EU-99999\n"
+            "Tiradores Plantea Round Bar\n"
+            "# Tiradores 9 4\n"
+        )
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.tiradores_por_modelo == {}
+        assert ot.num_tiradores == 13
+
     def test_extrae_tableros(self):
         """PASS: tabla INFORMACION DE CORTE columnar parseada correctamente."""
         texto = (
