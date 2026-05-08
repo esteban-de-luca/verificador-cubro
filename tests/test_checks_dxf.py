@@ -64,12 +64,17 @@ def _pieza(id="M1-P1", material="PLY", gama="LAM", acabado="Pale",
 
 
 def _ot(num_tiradores=0, num_ventilacion=0, colgadores_hornacina=None, tiene_tensores=None,
-        modelos_tiradores=None):
+        modelos_tiradores=None, tiradores_por_modelo=None):
     ot = OTData("EU-21822", "Test", "Semana 18", 10, 50.0, num_tiradores)
     ot.num_ventilacion = num_ventilacion
     ot.colgadores_hornacina = colgadores_hornacina
     ot.tiene_tensores = tiene_tensores
     ot.modelos_tiradores = modelos_tiradores or []
+    if tiradores_por_modelo is not None:
+        ot.tiradores_por_modelo = tiradores_por_modelo
+    elif modelos_tiradores and len(modelos_tiradores) == 1:
+        # Caso simple: un solo modelo concentra todo num_tiradores
+        ot.tiradores_por_modelo = {modelos_tiradores[0]: num_tiradores}
     return ot
 
 
@@ -403,17 +408,47 @@ class TestC37:
     def test_fail_pill_superline_sin_handcut(self, reglas):
         """Pill + Superline: Pill requiere HANDCUT; si no hay → FAIL."""
         dxfs = [_dxf(conteos={})]
-        ot = _ot(num_tiradores=6, modelos_tiradores=["Pill", "Superline"])
+        ot = _ot(num_tiradores=6, modelos_tiradores=["Pill", "Superline"],
+                 tiradores_por_modelo={"Pill": 4, "Superline": 2})
         r = check_handcut_vs_tiradores(dxfs, ot, reglas)
         assert r.resultado == "FAIL"
 
     def test_pass_round_bar_con_handcut(self, reglas):
-        """Round + Bar: Round requiere HANDCUT; cuenta coincide → PASS."""
+        """Round + Bar: solo los Round cuentan; cuenta coincide → PASS."""
         layer = "9_11-HANDCUT-EM5-Z18"
         dxfs = [_dxf(conteos={layer: 4})]
-        ot = _ot(num_tiradores=4, modelos_tiradores=["Round", "Bar"])
+        ot = _ot(num_tiradores=6, modelos_tiradores=["Round", "Bar"],
+                 tiradores_por_modelo={"Round": 4, "Bar": 2})
         r = check_handcut_vs_tiradores(dxfs, ot, reglas)
         assert r.resultado == "PASS"
+
+    def test_pass_plantea_round_solo_round_genera_handcut(self, reglas):
+        """Bug real SP-21613: Plantea(9) + Round(4) → HANDCUT debe ser 4 (solo Round)."""
+        layer = "9_11-HANDCUT-EM5-Z18"
+        dxfs = [_dxf(conteos={layer: 4})]
+        ot = _ot(num_tiradores=13, modelos_tiradores=["Plantea", "Round"],
+                 tiradores_por_modelo={"Plantea": 9, "Round": 4})
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "PASS"
+
+    def test_fail_plantea_round_handcut_no_coincide(self, reglas):
+        """Plantea(9) + Round(4) pero solo 2 HANDCUT → FAIL con detalle correcto."""
+        layer = "9_11-HANDCUT-EM5-Z18"
+        dxfs = [_dxf(conteos={layer: 2})]
+        ot = _ot(num_tiradores=13, modelos_tiradores=["Plantea", "Round"],
+                 tiradores_por_modelo={"Plantea": 9, "Round": 4})
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "FAIL"
+        assert "2" in r.detalle and "4" in r.detalle
+        assert "13" not in r.detalle  # ya no compara contra el total
+
+    def test_skip_fallback_sin_emparejado_modelos_mixtos(self, reglas):
+        """Si el extractor no pudo emparejar y hay mezcla con/sin geometría → SKIP."""
+        dxfs = [_dxf(conteos={"9_11-HANDCUT-EM5-Z18": 4})]
+        ot = _ot(num_tiradores=13, modelos_tiradores=["Plantea", "Round"],
+                 tiradores_por_modelo={})  # vacío explícito
+        r = check_handcut_vs_tiradores(dxfs, ot, reglas)
+        assert r.resultado == "SKIP"
 
     # --- Casos base ---
 

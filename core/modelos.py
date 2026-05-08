@@ -133,6 +133,7 @@ class OTData:
     colgadores_hornacina: int | None = None   # OT declara cantidad de colgadores de hornacina: 0="No", N≥1=cantidad, None=ausente (C-41)
     tiene_tensores: bool | None = None    # OT declara tensores (C-42)
     modelos_tiradores: list[str] = field(default_factory=list)  # Modelos de tirador: ["Round"], ["Superline", "Pill"]…
+    tiradores_por_modelo: dict[str, int] = field(default_factory=dict)  # {"Plantea": 9, "Round": 4} — empareja modelo con su recuento (C-37)
 
 
 # ---------------------------------------------------------------------------

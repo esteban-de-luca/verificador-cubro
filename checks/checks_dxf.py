@@ -262,11 +262,29 @@ def check_handcut_vs_tiradores(
     layer_handcut: str = reglas["layers"]["tirador_handcut"]
     n_handcut = _sum_conteo(dxfs, layer_handcut)
 
-    if n_handcut == ot.num_tiradores:
+    # Compara solo contra tiradores cuyo modelo genera geometría HANDCUT;
+    # los modelos sin geometría (Plantea, Bar, Superline…) no aparecen en DXF.
+    if ot.tiradores_por_modelo:
+        n_esperados = sum(
+            n for modelo, n in ot.tiradores_por_modelo.items()
+            if modelo.title() in modelos_con_handcut
+        )
+    else:
+        # Fallback si el extractor no pudo emparejar columnas: solo es seguro
+        # comparar con el total cuando todos los modelos generan HANDCUT.
+        if set(ot.modelos_tiradores) == modelos_con_handcut:
+            n_esperados = ot.num_tiradores
+        else:
+            return _skip(
+                "C-37", "Recuento HANDCUT == tiradores OT",
+                "No se pudo emparejar modelos↔cantidades en OT", _GRUPO,
+            )
+
+    if n_handcut == n_esperados:
         return _pass("C-37", "Recuento HANDCUT == tiradores OT", True, _GRUPO)
     return _fail(
         "C-37", "Recuento HANDCUT == tiradores OT",
-        f"DXF: {n_handcut} entidades HANDCUT | OT: {ot.num_tiradores} tiradores",
+        f"DXF: {n_handcut} entidades HANDCUT | OT: {n_esperados} tiradores con geometría",
         True, _GRUPO,
     )
 
