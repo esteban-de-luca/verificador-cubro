@@ -465,10 +465,12 @@ extraccion:
   # HPL (no LAM como en el resto del sistema) y "Wood" lleva sufijo "_M_".
   naming_csv: "core/naming_extraccion.csv"
 
-  # C-73: tolerancia para "Metros de canto" (EXTRACCION) vs "Mts lineales de
-  # corte" (OT). El sistema redondea al entero superior, así que ±1 mt absorbe
-  # el redondeo habitual sin enmascarar discrepancias reales.
-  tolerancia_metros_canto_mt: 1
+  # C-73: tolerancia porcentual para "Metros de canto" (EXTRACCION) vs "Mts
+  # lineales de corte" (OT). En proyectos multi-material el sistema redondea
+  # cada material por separado y luego se suman, lo que acumula error. Usamos
+  # porcentaje (no mt absolutos) para escalar con el tamaño del proyecto.
+  # 2% es consistente con tolerancia_peso_porcentaje (logística).
+  tolerancia_metros_canto_pct: 2.0
 
   # Alias de claves de cabecera del CSV (Sección A). Mapea la clave tal cual
   # aparece en el archivo (case-insensitive, sin tildes) → nombre canónico

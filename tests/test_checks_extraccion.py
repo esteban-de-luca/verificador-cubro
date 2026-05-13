@@ -235,6 +235,29 @@ class TestC73:
         r = check_metros_canto(_extr(metros_canto=0.0), _ot(), reglas)
         assert r.resultado == "SKIP"
 
+    def test_pass_multimaterial_acumulado(self, reglas):
+        """EU-22427 real: OT=97.01, EXTR=98 (61+37) → diff 1.02% ≤ 2%."""
+        r = check_metros_canto(
+            _extr(metros_canto=98.0), _ot(metros_canto=97.01), reglas,
+        )
+        assert r.resultado == "PASS"
+
+    def test_warn_fuera_porcentaje(self, reglas):
+        """Tolerancia 2% sobre OT=100 mt → más de ±2 mt es WARN."""
+        r = check_metros_canto(
+            _extr(metros_canto=103.0), _ot(metros_canto=100.0), reglas,
+        )
+        assert r.resultado == "WARN"
+        assert "%" in r.detalle
+
+    def test_pass_proyecto_grande(self, reglas):
+        """OT=500 mt, EXTR=505 → diff 5 mt = 1% ≤ 2% → PASS.
+        Antes con tolerancia ±1 mt absoluta esto fallaba."""
+        r = check_metros_canto(
+            _extr(metros_canto=505.0), _ot(metros_canto=500.0), reglas,
+        )
+        assert r.resultado == "PASS"
+
 
 # ---------------------------------------------------------------------------
 # C-74: tableros codificados ↔ OT
