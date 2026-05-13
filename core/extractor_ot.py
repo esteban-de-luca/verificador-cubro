@@ -98,6 +98,34 @@ _RE_HORNACINA = re.compile(
 _RE_TENSORES = re.compile(
     r"tensores[:\s]+(s[ií]|no)", re.IGNORECASE
 )
+# "Nº de OT 5074" o "No de OT: 5074"
+_RE_NUM_OT = re.compile(
+    r"N[ºo°]\s*de\s*OT[:\s]+(\d+)", re.IGNORECASE
+)
+# "Fecha entrada a corte: 25/05/2026"
+_RE_FECHA_ENTRADA = re.compile(
+    r"fecha\s+entrada\s+a\s+corte[:\s]+(\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4})",
+    re.IGNORECASE,
+)
+# "Fecha salida de taller: 05/06/2026"
+_RE_FECHA_SALIDA = re.compile(
+    r"fecha\s+salida\s+de\s+taller[:\s]+(\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4})",
+    re.IGNORECASE,
+)
+# "Cantidad de palets: 1 ud."  (acepta "ud.", "uds.", "u" o sin unidad)
+_RE_PALETS = re.compile(
+    r"cantidad\s+de\s+palets[:\s]+(\d+)", re.IGNORECASE
+)
+# "Modelo de envío: Caja grande" — capturamos hasta el final de línea para
+# admitir nombres compuestos. Otros separadores ('\n', '|') quedan fuera.
+_RE_MODELO_ENVIO = re.compile(
+    r"modelo\s+de\s+env[ií]o[:\s]+([^\n|]+?)\s*(?:\n|$)",
+    re.IGNORECASE,
+)
+# "Mts lineales de corte: 62,32 mt"
+_RE_METROS_CORTE = re.compile(
+    r"mts?\s+lineales\s+de\s+corte[:\s]+([\d,. ]+)\s*mt", re.IGNORECASE
+)
 # Sección de Observaciones CNC — se detiene en la siguiente cabecera de sección
 # o en línea en blanco. Cabeceras conocidas: OBSERVACIONES DE PRODUCCIÓN, PACKING LIST.
 _RE_SEC_CNC = re.compile(
@@ -321,6 +349,25 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
     # IDs de piezas del Packing List (filas "EU-XXXXX  ID_PIEZA  ancho alto ...")
     ids_piezas = [m.group(1).upper() for m in _RE_PL_FILA.finditer(texto)]
 
+    # Campos usados por los checks de cruce con EXTRACCION (C-70..C-73)
+    m_num_ot = _RE_NUM_OT.search(texto)
+    numero_ot = m_num_ot.group(1) if m_num_ot else ""
+
+    m_fe = _RE_FECHA_ENTRADA.search(texto)
+    fecha_entrada = m_fe.group(1) if m_fe else ""
+
+    m_fs = _RE_FECHA_SALIDA.search(texto)
+    fecha_salida = m_fs.group(1) if m_fs else ""
+
+    m_pal = _RE_PALETS.search(texto)
+    num_palets: int | None = int(m_pal.group(1)) if m_pal else None
+
+    m_env = _RE_MODELO_ENVIO.search(texto)
+    modelo_envio = m_env.group(1).strip() if m_env else ""
+
+    m_met = _RE_METROS_CORTE.search(texto)
+    metros_canto = _float_limpio(m_met.group(1)) if m_met else 0.0
+
     return OTData(
         id_proyecto=id_proyecto,
         cliente=cliente,
@@ -339,4 +386,10 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
         ids_piezas=ids_piezas,
         modelos_tiradores=modelos_tiradores,
         tiradores_por_modelo=tiradores_por_modelo,
+        numero_ot=numero_ot,
+        fecha_entrada=fecha_entrada,
+        fecha_salida=fecha_salida,
+        num_palets=num_palets,
+        modelo_envio=modelo_envio,
+        metros_canto=metros_canto,
     )

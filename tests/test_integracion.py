@@ -206,39 +206,39 @@ class TestExtraer:
         clasificados = _clasificar(list(archivos.keys()), r)
         return archivos, clasificados
 
-    def test_extrae_piezas(self):
+    def test_extrae_piezas(self, reglas):
         archivos, clasificados = self._archivos_validos()
-        datos = _extraer(archivos, clasificados)
+        datos = _extraer(archivos, clasificados, reglas)
         assert len(datos.piezas) == 2
         assert datos.piezas[0].id == "M1-P1"
 
-    def test_extrae_etiquetas(self):
+    def test_extrae_etiquetas(self, reglas):
         archivos, clasificados = self._archivos_validos()
-        datos = _extraer(archivos, clasificados)
+        datos = _extraer(archivos, clasificados, reglas)
         assert len(datos.filas_etiqueta) == 2
 
-    def test_extrae_ean(self):
+    def test_extrae_ean(self, reglas):
         archivos, clasificados = self._archivos_validos()
-        datos = _extraer(archivos, clasificados)
+        datos = _extraer(archivos, clasificados, reglas)
         assert len(datos.filas_ean) == 2
         assert datos.filas_ean[0].id_bulto == "CUB-EU-99999-1-1"
 
-    def test_extrae_dxfs(self):
+    def test_extrae_dxfs(self, reglas):
         archivos, clasificados = self._archivos_validos()
-        datos = _extraer(archivos, clasificados)
+        datos = _extraer(archivos, clasificados, reglas)
         assert len(datos.dxfs) == 1
         assert "CONTROL" in datos.dxfs[0].layers
 
     def test_sin_despiece_piezas_vacias(self, reglas):
         archivos = {"ETIQUETAS_EU-99999.csv": _csv_etiquetas(_PIEZAS_VALIDAS)}
         clasificados = _clasificar(list(archivos.keys()), reglas)
-        datos = _extraer(archivos, clasificados)
+        datos = _extraer(archivos, clasificados, reglas)
         assert datos.piezas == []
 
     def test_error_extraccion_registrado(self, reglas):
         archivos = {"DESPIECE_EU-99999.xlsx": io.BytesIO(b"no es xlsx")}
         clasificados = _clasificar(list(archivos.keys()), reglas)
-        datos = _extraer(archivos, clasificados)
+        datos = _extraer(archivos, clasificados, reglas)
         assert datos.piezas == []
         assert any("DESPIECE" in e for e in datos.errores_extraccion)
 
@@ -249,7 +249,7 @@ class TestExtraer:
             "EAN LOGISTIC_EU-99999.csv": _csv_ean(_PIEZAS_VALIDAS),
         }
         clasificados = _clasificar(list(archivos.keys()), reglas)
-        datos = _extraer(archivos, clasificados)
+        datos = _extraer(archivos, clasificados, reglas)
         assert datos.filas_etiqueta  # etiquetas sí se extrajeron
         assert datos.filas_ean       # EAN sí se extrajeron
         assert datos.piezas == []   # DESPIECE falló
@@ -423,7 +423,7 @@ class TestPipelineEndToEnd:
 
     def test_pipeline_piezas_ply_lam_no_bloquea(self, reglas, reglas_cnc):
         archivos, clasificados = self._armar_archivos(_PIEZAS_VALIDAS, reglas)
-        datos = _extraer(archivos, clasificados)
+        datos = _extraer(archivos, clasificados, reglas)
         checks = _ejecutar_checks(datos, "EU-99999", reglas, reglas_cnc)
         inf = InformeFinal("EU-99999", "", "Esteban", "Semana 1", checks=checks)
         # PLY+LAM+Pale válido → C-15, C-16 PASS
@@ -438,7 +438,7 @@ class TestPipelineEndToEnd:
              "acabado": "Blanco"},  # PLY+LAC → inválido
         ]
         archivos, clasificados = self._armar_archivos(piezas_invalidas, reglas)
-        datos = _extraer(archivos, clasificados)
+        datos = _extraer(archivos, clasificados, reglas)
         checks = _ejecutar_checks(datos, "EU-99999", reglas, reglas_cnc)
         c15 = next(c for c in checks if c.id == "C-15")
         assert c15.resultado == "FAIL"
@@ -451,7 +451,7 @@ class TestPipelineEndToEnd:
              "mecanizado": "cazta.", "apertura": ""},  # sin apertura
         ]
         archivos, clasificados = self._armar_archivos(piezas, reglas)
-        datos = _extraer(archivos, clasificados)
+        datos = _extraer(archivos, clasificados, reglas)
         checks = _ejecutar_checks(datos, "EU-99999", reglas, reglas_cnc)
         c20 = next(c for c in checks if c.id == "C-20")
         assert c20.resultado == "FAIL"
@@ -469,7 +469,7 @@ class TestPipelineEndToEnd:
             "EU99999_Test_PLY_LAMINADO_PALE_T1.dxf": dxf_buf,
         }
         clasificados = _clasificar(list(archivos.keys()), reglas)
-        datos = _extraer(archivos, clasificados)
+        datos = _extraer(archivos, clasificados, reglas)
         checks = _ejecutar_checks(datos, "EU-99999", reglas, reglas_cnc)
         c11 = next(c for c in checks if c.id == "C-11")
         assert c11.resultado == "FAIL"

@@ -26,7 +26,7 @@ _GRUPO = "Inventario"
 
 def check_documentos_presentes(nombres_archivos: list[str], reglas: dict) -> CheckResult:
     """
-    C-00: DESPIECE, ETIQUETAS y EAN LOGISTIC deben estar presentes.
+    C-00: DESPIECE, ETIQUETAS, EAN LOGISTIC y EXTRACCION deben estar presentes.
     Bloquea: Sí.
     """
     patrones = reglas["nomenclatura"]["patrones"]
@@ -35,6 +35,7 @@ def check_documentos_presentes(nombres_archivos: list[str], reglas: dict) -> Che
         "DESPIECE": [patrones["despiece"]],
         "ETIQUETAS": [patrones["etiquetas"]],
         "EAN LOGISTIC": ean_patrones,
+        "EXTRACCION": [patrones.get("extraccion", "EXTRACCION_*")],
     }
     faltantes = []
     for nombre_doc, lista_patrones in obligatorios.items():

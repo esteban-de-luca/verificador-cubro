@@ -22,6 +22,7 @@ RESULTADOS_VALIDOS = frozenset({"PASS", "FAIL", "WARN", "SKIP"})
 GRUPOS_VALIDOS = frozenset({
     "Inventario", "Piezas", "Material",
     "Mecanizados", "Tiradores", "DXF", "Logistica", "Texto CNC",
+    "Extraccion",
 })
 
 
@@ -134,6 +135,13 @@ class OTData:
     tiene_tensores: bool | None = None    # OT declara tensores (C-42)
     modelos_tiradores: list[str] = field(default_factory=list)  # Modelos de tirador: ["Round"], ["Superline", "Pill"]…
     tiradores_por_modelo: dict[str, int] = field(default_factory=dict)  # {"Plantea": 9, "Round": 4} — empareja modelo con su recuento (C-37)
+    # Campos usados por los checks de cruce con EXTRACCION (C-70..C-73, C-80)
+    numero_ot: str = ""                  # "Nº de OT 5074" → "5074"
+    fecha_entrada: str = ""              # "Fecha entrada a corte: 25/05/2026" → "25/05/2026"
+    fecha_salida: str = ""               # "Fecha salida de taller: 05/06/2026" → "05/06/2026"
+    num_palets: int | None = None        # "Cantidad de palets: 1 ud." → 1; None si ausente
+    modelo_envio: str = ""               # "Modelo de envío: Caja grande" → "Caja grande"
+    metros_canto: float = 0.0            # "Mts lineales de corte: 62,32 mt" → 62.32
 
 
 # ---------------------------------------------------------------------------
@@ -176,6 +184,97 @@ class DXFDoc:
     @property
     def clave_material(self) -> str:
         return f"{self.material}_{self.gama}_{self.acabado}"
+
+
+# ---------------------------------------------------------------------------
+# EXTRACCION CSV — Tercer testigo (Checks C-70..C-80)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class FilaExtraccion:
+    """Una fila de la Sección B (tabla de piezas) del CSV EXTRACCION."""
+
+    id_proyecto: str               # "EU-22376"
+    cliente: str                   # "Bürgerverein"
+    id_pieza: str                  # "M1-P1", "R1", "E1", etc.
+    tipologia: str                 # "P" | "C" | "X" | "E" | "R" | "RV" | "T" | "L" | "B" | "H" | ""
+    ancho: int                     # mm
+    alto: int                      # mm
+    material: str                  # "PLY" | "MDF" | ""
+    gama: str                      # "LAM" | "LIN" | "LAC" | "WOO" | ""  (HPL→LAM ya normalizado)
+    acabado: str                   # "Pale", "Zafiro", "Rosa-baby"…
+    mecanizado: str = ""           # "cazta." | "torn." | "vent." | ""
+    tirador: str = ""              # "Round" | "Bar" | "Knob" | ""
+    posicion_tirador: str = ""     # "1"–"5" | ""
+    apertura: str = ""             # "I" | "D" | ""
+    color_tirador: str = ""        # "Zafiro" | "Inox" | ""
+    cnc: str = ""                  # Observación CNC por pieza (vacío por defecto)
+    ac2: str = ""                  # Observación AC2 por pieza
+    embalaje: str = ""             # Observación embalaje por pieza
+
+
+@dataclass
+class ExtraccionData:
+    """Contenido completo del CSV EXTRACCION_<ID>_<Cliente>.csv.
+
+    Sección A (cabecera de proyecto): datos agregados.
+    Sección B (tabla de piezas): una FilaExtraccion por pieza.
+
+    Todos los campos numéricos usan 0 / 0.0 / "" como valor por defecto cuando
+    el campo está ausente, para que los checks puedan detectarlo sin excepciones.
+    """
+
+    # --- Sección A: cabecera ---
+    id_proyecto: str = ""
+    cliente: str = ""
+    numero_ot: str = ""                    # nº OT como string (preserva ceros a la izquierda)
+    semana: str = ""                       # "22"
+    fecha_entrada: str = ""                # "25/05/2026"
+    fecha_salida: str = ""                 # "05/06/2026"
+    piezas: int = 0                        # Cantidad de piezas
+    tiradores: int = 0                     # Tiradores Integrados
+    metros_canto: float = 0.0              # Metros de canto
+    tensores: int = 0                      # Cantidad de tensores
+    rejillas_ventilacion: int = 0          # Rejillas ventilacion
+    hornacinas: int = 0                    # Hornacinas
+    palets: int = 0                        # Cantidad de palets
+    mueble_nevera: int = 0                 # Mueble de nevera 75x60x220 cm
+    baldas_2h: int = 0                     # Baldas con 2 herrajes ocultos
+    baldas_3h: int = 0                     # Baldas con 3 herrajes ocultos
+    # Tipos de envío (uno solo debe ser ≥1; los otros 0)
+    caja_grande: int = 0
+    caja_pequena: int = 0
+    estructura_grande: int = 0
+    estructura_pequena: int = 0
+    # Prioridad solo aplicable a proyectos -INC
+    prioridad_inc: str = ""                # "P1" | "P2" | ""
+    # Tableros por combinación: {<COD>_tab: cantidad}
+    # Ej. {"LAC_Zaf_tab": 2, "HPL_Pal_tab": 1}
+    tableros_codificados: dict[str, int] = field(default_factory=dict)
+    # Claves de cabecera que no se reconocieron (se reportan como WARN)
+    claves_desconocidas: list[str] = field(default_factory=list)
+
+    # --- Sección B: tabla de piezas ---
+    piezas_tabla: list[FilaExtraccion] = field(default_factory=list)
+
+    @property
+    def tipo_envio_activo(self) -> str:
+        """
+        Devuelve el nombre canónico del tipo de envío con cantidad ≥1.
+
+        Returns:
+            "caja_grande" | "caja_pequena" | "estructura_grande" | "estructura_pequena"
+            o "" si ninguno está activo o más de uno lo está (caso anómalo).
+        """
+        activos = [
+            nombre for nombre, valor in (
+                ("caja_grande", self.caja_grande),
+                ("caja_pequena", self.caja_pequena),
+                ("estructura_grande", self.estructura_grande),
+                ("estructura_pequena", self.estructura_pequena),
+            ) if valor >= 1
+        ]
+        return activos[0] if len(activos) == 1 else ""
 
 
 # ---------------------------------------------------------------------------
