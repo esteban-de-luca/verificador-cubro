@@ -176,6 +176,84 @@ class TestSeccionA:
 
 
 # ---------------------------------------------------------------------------
+# Multi-material: pares (clave, valor) repetidos en la MISMA fila
+# ---------------------------------------------------------------------------
+# En proyectos con varias gamas+acabados, el sistema CUBRO repite las claves
+# por material en la misma fila del CSV. Ejemplos reales (EU-22427):
+#   LAC_Pin_tab,2,LAC_Rot_tab,1
+#   Cantidad de piezas,23,Cantidad de piezas,11
+#   Metros de canto,61,Metros de canto,37
+# El parser debe iterar la fila por pares y acumular los campos numéricos.
+
+CSV_MULTI = """Numero OT,5085
+Semana,22
+Fecha entrada,25/05/2026
+Fecha salida,05/06/2026
+Mueble de nevera 75x60x220 cm,0
+Caja grande,1
+Cantidad de palets,1
+LAC_Pin_tab,2,LAC_Rot_tab,1
+Cantidad de piezas,23,Cantidad de piezas,11
+Metros de canto,61,Metros de canto,37
+Cantidad de tensores,0
+Rejillas ventilacion,2
+Tiradores integradros,20
+Prioridad de INC,
+ID Proyecto,Nombre Cliente,Pieza,Tipologia,Ancho,Alto,Material,Gama,Acabado,Mecanizado,Tirador,Posición de tirador,Apertura,Color Tirador,CNC,AC2,Embalaje
+EU-22427,Konrad Hopf,M1-T1,T,200,800,MDF,LAC,Pino,,,,,,,,
+EU-22427,Konrad Hopf,M8-PL1,L,396,800,MDF,LAC,Roto,,,,,,,,
+"""
+
+
+class TestMultiMaterial:
+
+    def test_tableros_codificados_dos_combinaciones(self, reglas):
+        """LAC_Pin_tab=2 y LAC_Rot_tab=1 ambos en la misma fila → dict con ambos."""
+        d = leer_extraccion(_csv_en_memoria(CSV_MULTI), reglas)
+        assert d.tableros_codificados == {"LAC_Pin_tab": 2, "LAC_Rot_tab": 1}
+
+    def test_piezas_se_acumulan(self, reglas):
+        """'Cantidad de piezas,23,Cantidad de piezas,11' → 34."""
+        d = leer_extraccion(_csv_en_memoria(CSV_MULTI), reglas)
+        assert d.piezas == 34
+
+    def test_metros_canto_se_acumulan(self, reglas):
+        """'Metros de canto,61,Metros de canto,37' → 98.0."""
+        d = leer_extraccion(_csv_en_memoria(CSV_MULTI), reglas)
+        assert d.metros_canto == pytest.approx(98.0)
+
+    def test_string_conserva_primera_aparicion(self, reglas):
+        """Si el sistema duplica Numero OT, conservamos la primera no vacía."""
+        csv = CSV_MULTI.replace(
+            "Numero OT,5085", "Numero OT,5085,Numero OT,5085",
+        )
+        d = leer_extraccion(_csv_en_memoria(csv), reglas)
+        assert d.numero_ot == "5085"
+
+    def test_unico_material_sigue_funcionando(self, reglas):
+        """Regresión: un solo par en la fila se sigue parseando bien (era el caso de CSV_BASE)."""
+        d = leer_extraccion(_csv_en_memoria(CSV_BASE), reglas)
+        assert d.tableros_codificados == {"LAC_Zaf_tab": 2}
+        assert d.piezas == 3
+        assert d.metros_canto == pytest.approx(63.0)
+
+    def test_tres_materiales_se_acumulan(self, reglas):
+        """Hipotético: 3 combinaciones en la misma fila."""
+        csv = CSV_MULTI.replace(
+            "LAC_Pin_tab,2,LAC_Rot_tab,1",
+            "LAC_Pin_tab,2,LAC_Rot_tab,1,HPL_Pal_tab,3",
+        ).replace(
+            "Cantidad de piezas,23,Cantidad de piezas,11",
+            "Cantidad de piezas,23,Cantidad de piezas,11,Cantidad de piezas,8",
+        )
+        d = leer_extraccion(_csv_en_memoria(csv), reglas)
+        assert d.tableros_codificados == {
+            "LAC_Pin_tab": 2, "LAC_Rot_tab": 1, "HPL_Pal_tab": 3,
+        }
+        assert d.piezas == 42
+
+
+# ---------------------------------------------------------------------------
 # Sección B: tabla de piezas
 # ---------------------------------------------------------------------------
 
