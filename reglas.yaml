@@ -53,8 +53,8 @@ acabados:
   LAM:
     - Blanco
     - Pale
-    - Rosa
-    - Cadaques
+    - Rosa-baby
+    - Cadaqués
     - Caraibi
     - Sable
     - Agave
@@ -66,15 +66,16 @@ acabados:
     - Perle
     - Blush
     - Comodoro
-    - Marble Green
+    - Marble-Green
     - Metal
   LIN:
     - Mushroom
-    - Smokey Blue
+    - Smoky-Blue
     - Conifer
-    - Pistachio
+    - Pistacho
     - Olive
     - Pewter
+    - Powder
     - Vapour
 
 # -----------------------------------------------------------------------------
@@ -451,3 +452,69 @@ nomenclatura:
     advertencias:     "[ADVERTENCIAS] "
     aprobado:         "[OK] "
     aprobado_manual:  "[OK - MANUAL] "
+
+# -----------------------------------------------------------------------------
+# EXTRACCION (Checks C-70 a C-80)
+# Documento CSV con cabecera del proyecto + tabla de piezas, generado por el
+# sistema interno de CUBRO. Sirve como tercer testigo independiente de OT y
+# DESPIECE: si discrepa con cualquiera de ellos, bloqueamos producción.
+# -----------------------------------------------------------------------------
+extraccion:
+  # Ruta al CSV de mapeo Gama+Acabado → código <COD>_tab (relativa al repo).
+  # Solo aplica al documento EXTRACCION: la gama "Laminado" se codifica como
+  # HPL (no LAM como en el resto del sistema) y "Wood" lleva sufijo "_M_".
+  naming_csv: "core/naming_extraccion.csv"
+
+  # C-73: tolerancia para "Metros de canto" (EXTRACCION) vs "Mts lineales de
+  # corte" (OT). El sistema redondea al entero superior, así que ±1 mt absorbe
+  # el redondeo habitual sin enmascarar discrepancias reales.
+  tolerancia_metros_canto_mt: 1
+
+  # Alias de claves de cabecera del CSV (Sección A). Mapea la clave tal cual
+  # aparece en el archivo (case-insensitive, sin tildes) → nombre canónico
+  # interno. Absorbe typos del sistema y variantes históricas.
+  alias_cabecera:
+    "numero ot":                       numero_ot
+    "semana":                          semana
+    "fecha entrada":                   fecha_entrada
+    "fecha salida":                    fecha_salida
+    "altillos":                        altillos_seccion
+    "mueble de nevera 75x60x220 cm":   mueble_nevera
+    "baldas con 2 herrajes ocultos":   baldas_2h
+    "baldas con 3 herrajes ocultos":   baldas_3h
+    "hornacinas":                      hornacinas
+    "caja grande":                     caja_grande
+    "caja pequena":                    caja_pequena       # "pequeña" sin tilde tras normalización
+    "estructura grande":               estructura_grande
+    "estructura pequena":              estructura_pequena
+    "cantidad de palets":              palets
+    "cantidad de piezas":              piezas
+    "metros de canto":                 metros_canto
+    "cantidad de tensores":            tensores
+    "rejillas ventilacion":            rejillas_ventilacion
+    "tiradores integrados":            tiradores          # nombre oficial
+    "tiradores integradros":           tiradores          # legacy typo — deprecar tras migración
+    "prioridad de inc":                prioridad_inc
+
+  # C-72: tipos de envío en cabecera (EXTRACCION) ↔ "Modelo de envío" (OT).
+  # Mapea la clave canónica de la cabecera → texto exacto del OT.
+  tipos_envio:
+    caja_grande:         "Caja grande"
+    caja_pequena:        "Caja pequeña"
+    estructura_grande:   "Estructura grande"
+    estructura_pequena:  "Estructura pequeña"
+
+  # C-75: valores válidos en "Prioridad de INC". Solo se rellena si el proyecto
+  # es -INC; vacío en no-INC es válido.
+  prioridades_inc_validas:
+    - P1
+    - P2
+
+  # C-80: dimensiones esperadas de balda según número de herrajes ocultos.
+  # Orientación libre (200×600 ≡ 600×200). Cualquier balda B del DESPIECE con
+  # estas dimensiones cuenta para el campo correspondiente del EXTRACCION.
+  baldas_2h_dims:
+    - {ancho: 200, alto: 600}
+    - {ancho: 200, alto: 800}
+  baldas_3h_dims:
+    - {ancho: 200, alto: 1200}

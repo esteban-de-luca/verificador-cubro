@@ -52,21 +52,40 @@ def _ot(tableros=None, n_piezas=1, num_tableros_total=_UNSET, materiales_sin_can
 class TestC00:
 
     def test_pass_con_todos_presentes(self, reglas):
-        nombres = ["DESPIECE_EU-21822.xlsx", "ETIQUETAS_EU-21822.csv", "EAN LOGISTIC_EU-21822.csv"]
+        nombres = [
+            "DESPIECE_EU-21822.xlsx", "ETIQUETAS_EU-21822.csv",
+            "EAN LOGISTIC_EU-21822.csv", "EXTRACCION_EU-21822.csv",
+        ]
         r = check_documentos_presentes(nombres, reglas)
         assert r.resultado == "PASS"
 
     def test_fail_falta_despiece(self, reglas):
-        nombres = ["ETIQUETAS_EU-21822.csv", "EAN LOGISTIC_EU-21822.csv"]
+        nombres = [
+            "ETIQUETAS_EU-21822.csv", "EAN LOGISTIC_EU-21822.csv",
+            "EXTRACCION_EU-21822.csv",
+        ]
         r = check_documentos_presentes(nombres, reglas)
         assert r.resultado == "FAIL"
         assert r.bloquea
 
     def test_fail_falta_ean(self, reglas):
-        nombres = ["DESPIECE_EU-21822.xlsx", "ETIQUETAS_EU-21822.csv"]
+        nombres = [
+            "DESPIECE_EU-21822.xlsx", "ETIQUETAS_EU-21822.csv",
+            "EXTRACCION_EU-21822.csv",
+        ]
         r = check_documentos_presentes(nombres, reglas)
         assert r.resultado == "FAIL"
         assert "EAN" in r.detalle
+
+    def test_fail_falta_extraccion(self, reglas):
+        nombres = [
+            "DESPIECE_EU-21822.xlsx", "ETIQUETAS_EU-21822.csv",
+            "EAN LOGISTIC_EU-21822.csv",
+        ]
+        r = check_documentos_presentes(nombres, reglas)
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "EXTRACCION" in r.detalle
 
     def test_id_check_correcto(self, reglas):
         r = check_documentos_presentes([], reglas)
@@ -76,7 +95,8 @@ class TestC00:
     def test_pass_con_archivos_extra(self, reglas):
         nombres = [
             "DESPIECE_EU-21822.xlsx", "ETIQUETAS_EU-21822.csv",
-            "EAN LOGISTIC_EU-21822.csv", "OT_EU-21822.pdf", "ALBARÁN_EU-21822.pdf",
+            "EAN LOGISTIC_EU-21822.csv", "EXTRACCION_EU-21822.csv",
+            "OT_EU-21822.pdf", "ALBARÁN_EU-21822.pdf",
         ]
         assert check_documentos_presentes(nombres, reglas).resultado == "PASS"
 

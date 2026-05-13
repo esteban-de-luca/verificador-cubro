@@ -19,10 +19,11 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from core.modelos import CheckResult, InformeFinal, OTData, Pieza
+from core.modelos import CheckResult, ExtraccionData, InformeFinal, OTData, Pieza
 from core.extractor_despiece import leer_despiece
 from core.extractor_etiquetas_ean import FilaEAN, FilaEtiqueta, leer_ean, leer_etiquetas
 from core.extractor_dxf import DXFDoc, leer_todos_dxf
+from core.extractor_extraccion import cargar_naming_default, leer_extraccion
 from core.extractor_ot import leer_ot
 from core.extractor_pdfs_logistica import leer_n_bultos, leer_codigo_destino
 
@@ -90,6 +91,19 @@ from checks.checks_texto import (
     check_observaciones_reconocidas,
     check_observaciones_no_reconocidas,
 )
+from checks.checks_extraccion import (
+    check_cabecera_ot,
+    check_recuentos_criticos,
+    check_logistica_envio,
+    check_metros_canto,
+    check_tableros_codificados,
+    check_prioridad_inc,
+    check_tabla_ids_vs_despiece,
+    check_tabla_dimensiones_material,
+    check_tabla_tipologia_mecanizado,
+    check_tabla_tirador,
+    check_baldas_herrajes,
+)
 
 log = logging.getLogger(__name__)
 
@@ -110,6 +124,8 @@ class DatosProyecto:
     dxfs: list[DXFDoc] = field(default_factory=list)
     n_bultos_pdf: int | None = None      # None → SKIP C-50
     codigo_destino: str | None = None    # None → SKIP C-56
+    extraccion: ExtraccionData | None = None  # None → C-70..C-80 hacen SKIP, C-00 hace FAIL
+    naming: dict[str, tuple[str, str]] = field(default_factory=dict)  # naming_extraccion.csv cargado
     errores_extraccion: list[str] = field(default_factory=list)
 
 
@@ -130,7 +146,8 @@ def _clasificar(nombres: list[str], reglas: dict) -> dict[str, list[str]]:
     p = reglas["nomenclatura"]["patrones"]
     grupos: dict[str, list[str]] = {
         t: [] for t in ["despiece", "etiquetas", "ean", "ot", "dxf",
-                         "albaran", "bultos", "destino_caja", "pdfs_nesting", "otros"]
+                         "albaran", "bultos", "destino_caja", "extraccion",
+                         "pdfs_nesting", "otros"]
     }
     for nombre in nombres:
         if _match(nombre, p["despiece"]):
@@ -141,6 +158,8 @@ def _clasificar(nombres: list[str], reglas: dict) -> dict[str, list[str]]:
             grupos["ean"].append(nombre)
         elif _match(nombre, p["ot"]):
             grupos["ot"].append(nombre)
+        elif _match(nombre, p.get("extraccion", "EXTRACCION_*")):
+            grupos["extraccion"].append(nombre)
         elif nombre.lower().endswith(".dxf"):
             grupos["dxf"].append(nombre)
         elif _match(nombre, p.get("albaran", "ALBARAN_*")) or \
@@ -166,6 +185,7 @@ def _clasificar(nombres: list[str], reglas: dict) -> dict[str, list[str]]:
 def _extraer(
     archivos: dict[str, io.BytesIO],
     clasificados: dict[str, list[str]],
+    reglas: dict,
 ) -> DatosProyecto:
     datos = DatosProyecto(nombres=list(archivos.keys()))
     err = datos.errores_extraccion
@@ -215,6 +235,13 @@ def _extraer(
                 datos.codigo_destino = codigo
         except Exception as exc:
             err.append(f"DESTINO CAJA '{nombre}': {exc}")
+
+    for nombre in clasificados.get("extraccion", []):
+        try:
+            archivos[nombre].seek(0)
+            datos.extraccion = leer_extraccion(archivos[nombre], reglas)
+        except Exception as exc:
+            err.append(f"EXTRACCION '{nombre}': {exc}")
 
     dxf_buffers = {n: archivos[n] for n in clasificados["dxf"] if n in archivos}
     if dxf_buffers:
@@ -315,6 +342,36 @@ def _ejecutar_checks(
     resultados.append(check_observaciones_reconocidas(ot, reglas_cnc))
     resultados.append(check_observaciones_no_reconocidas(ot, reglas_cnc))
 
+    # EXTRACCION (C-70..C-80): tercer testigo independiente
+    if datos.extraccion is None:
+        motivo = "EXTRACCION ausente (C-00 reporta el fallo)"
+        for cid, desc in (
+            ("C-70", "Cabecera (Nº OT, semana, fechas) EXTRACCION ↔ OT"),
+            ("C-71", "Recuentos críticos (piezas, tiradores, ventilación, tensores) ↔ OT"),
+            ("C-72", "Logística (palets + tipo de envío) coherente con OT"),
+            ("C-73", "Metros de canto EXTRACCION ≈ OT (con tolerancia)"),
+            ("C-74", "Tableros <COD>_tab decodificados ↔ tabla CORTE OT"),
+            ("C-75", "Prioridad INC rellenada solo en -INC con valor válido"),
+            ("C-76", "Tabla EXTRACCION: nº filas + conjunto IDs ↔ DESPIECE"),
+            ("C-77", "Tabla EXTRACCION: dimensiones + material/gama/acabado ↔ DESPIECE"),
+            ("C-78", "Tabla EXTRACCION: tipología + mecanizado ↔ DESPIECE"),
+            ("C-79", "Tabla EXTRACCION: tirador/posición/apertura/color ↔ DESPIECE"),
+            ("C-80", "Baldas con herrajes (EXTRACCION) ↔ DESPIECE tipología B"),
+        ):
+            resultados.append(CheckResult(cid, desc, "SKIP", motivo, False, "Extraccion"))
+    else:
+        resultados.append(check_cabecera_ot(datos.extraccion, ot))
+        resultados.append(check_recuentos_criticos(datos.extraccion, ot))
+        resultados.append(check_logistica_envio(datos.extraccion, ot, reglas))
+        resultados.append(check_metros_canto(datos.extraccion, ot, reglas))
+        resultados.append(check_tableros_codificados(datos.extraccion, ot, datos.naming))
+        resultados.append(check_prioridad_inc(datos.extraccion, reglas))
+        resultados.append(check_tabla_ids_vs_despiece(datos.extraccion, datos.piezas))
+        resultados.append(check_tabla_dimensiones_material(datos.extraccion, datos.piezas))
+        resultados.append(check_tabla_tipologia_mecanizado(datos.extraccion, datos.piezas))
+        resultados.append(check_tabla_tirador(datos.extraccion, datos.piezas))
+        resultados.append(check_baldas_herrajes(datos.extraccion, datos.piezas, reglas))
+
     return resultados
 
 
@@ -360,7 +417,8 @@ def verificar_proyecto(
         len(clasificados["dxf"]), len(clasificados["pdfs_nesting"]),
     )
 
-    datos = _extraer(archivos, clasificados)
+    datos = _extraer(archivos, clasificados, reglas)
+    datos.naming = cargar_naming_default()
     for err in datos.errores_extraccion:
         log.warning("Extracción: %s", err)
 
