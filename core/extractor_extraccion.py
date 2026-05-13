@@ -208,23 +208,18 @@ def leer_extraccion(
                 cabecera_tabla = [_normalizar_clave(c) for c in fila]
                 continue
 
-            clave_orig = fila[0].strip()
-            valor = fila[1].strip() if len(fila) >= 2 else ""
-
-            # Claves <COD>_tab: van aparte, preservando el case original para
-            # que el check C-74 las decodifique con la tabla canónica.
-            if _es_clave_tableros(clave_orig):
-                if valor:
-                    data.tableros_codificados[clave_orig] = _int_o(valor)
-                continue
-
-            campo = alias_cab.get(_normalizar_clave(clave_orig))
-            if campo is None:
-                if clave_orig:
-                    data.claves_desconocidas.append(clave_orig)
-                continue
-
-            _asignar_campo(data, campo, valor)
+            # Sección A: la fila puede contener MÚLTIPLES pares (clave, valor)
+            # cuando el proyecto es multi-material. Ejemplo:
+            #   LAC_Pin_tab,2,LAC_Rot_tab,1
+            #   Cantidad de piezas,23,Cantidad de piezas,11
+            # Para campos numéricos se ACUMULA (suma) y para strings se conserva
+            # la primera aparición. _procesar_par_a hace el routing correcto.
+            i = 0
+            while i < len(fila):
+                clave_orig = fila[i].strip()
+                valor = fila[i + 1].strip() if i + 1 < len(fila) else ""
+                _procesar_par_a(data, clave_orig, valor, alias_cab)
+                i += 2
 
         else:
             if cabecera_tabla is None:
@@ -250,27 +245,70 @@ def leer_extraccion(
 
 
 # ---------------------------------------------------------------------------
-# Asignación de campos de la Sección A
+# Procesamiento de pares (clave, valor) de la Sección A
 # ---------------------------------------------------------------------------
 
-def _asignar_campo(data: ExtraccionData, campo: str, valor: str) -> None:
-    """Asigna `valor` al atributo `campo` de `data`, con conversión adecuada."""
+#: Campos string: se conserva la primera aparición no vacía. En proyectos
+#: multi-material las mismas claves de cabecera se duplican con idéntico valor
+#: (ej. dos veces "Numero OT,5085"); guardar la primera es idempotente.
+_CAMPOS_STRING = frozenset({
+    "numero_ot", "semana", "fecha_entrada", "fecha_salida", "prioridad_inc",
+})
+
+#: Campos enteros: se ACUMULAN (suman). En multi-material el sistema reparte
+#: por gama+acabado: "Cantidad de piezas,23,Cantidad de piezas,11" → 34.
+_CAMPOS_INT = frozenset({
+    "piezas", "tiradores", "tensores", "rejillas_ventilacion",
+    "hornacinas", "palets", "mueble_nevera", "baldas_2h", "baldas_3h",
+    "caja_grande", "caja_pequena", "estructura_grande", "estructura_pequena",
+})
+
+
+def _procesar_par_a(
+    data: ExtraccionData,
+    clave_orig: str,
+    valor: str,
+    alias_cab: dict[str, str],
+) -> None:
+    """Procesa un par (clave, valor) de la Sección A.
+
+    Una fila de la Sección A puede contener varios pares cuando el proyecto
+    es multi-material. Este helper:
+      - Detecta claves <COD>_tab y las acumula en tableros_codificados.
+      - Mapea otras claves vía alias_cab y rutea a int/float/string según campo.
+      - Ignora pares con clave vacía (relleno por columnas extra del CSV).
+    """
+    if not clave_orig:
+        return  # par vacío (columnas de relleno)
+
+    # Claves <COD>_tab: preservar case original (la decodificación es
+    # case-insensitive, pero queremos no perder el original para diagnóstico).
+    if _es_clave_tableros(clave_orig):
+        if valor:
+            data.tableros_codificados[clave_orig] = (
+                data.tableros_codificados.get(clave_orig, 0) + _int_o(valor)
+            )
+        return
+
+    campo = alias_cab.get(_normalizar_clave(clave_orig))
+    if campo is None:
+        data.claves_desconocidas.append(clave_orig)
+        return
+
     if campo == "altillos_seccion":
         return  # etiqueta de sección sin valor útil
     if campo == "metros_canto":
-        data.metros_canto = _float_o(valor)
+        # Acumular en multi-material; en proyectos de un solo material es
+        # idempotente porque el campo se inicializa a 0.0.
+        data.metros_canto += _float_o(valor)
         return
-    if campo in (
-        "numero_ot", "semana", "fecha_entrada", "fecha_salida", "prioridad_inc",
-    ):
-        setattr(data, campo, valor)
+    if campo in _CAMPOS_STRING:
+        # Conservar primera aparición no vacía (todas deben ser iguales).
+        if not getattr(data, campo) and valor:
+            setattr(data, campo, valor)
         return
-    if campo in (
-        "piezas", "tiradores", "tensores", "rejillas_ventilacion",
-        "hornacinas", "palets", "mueble_nevera", "baldas_2h", "baldas_3h",
-        "caja_grande", "caja_pequena", "estructura_grande", "estructura_pequena",
-    ):
-        setattr(data, campo, _int_o(valor))
+    if campo in _CAMPOS_INT:
+        setattr(data, campo, getattr(data, campo) + _int_o(valor))
         return
     # Campos no soportados se ignoran silenciosamente
 
