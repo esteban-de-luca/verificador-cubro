@@ -281,3 +281,30 @@ class TestC04:
     def test_pass_sin_pdfs_si_no_hay_piezas(self):
         r = check_pdfs_nesting_vs_materiales(["OT_EU-21822.pdf"], [])
         assert r.resultado == "SKIP"
+
+    def test_skip_proyecto_de_retal(self):
+        """SP-20742-INC real: OT declara 0 tableros (la pieza se corta de
+        retal), DESPIECE tiene 1 combinación material, pero no debe existir
+        ningún PDF de nesting → SKIP."""
+        piezas = [_pieza(material="MDF", gama="LAC", acabado="Crema")]
+        nombres = ["DESPIECE_SP-20742-INC.xlsx", "OT_SP-20742-INC.pdf"]
+        ot = _ot(tableros={}, num_tableros_total=0)
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "SKIP"
+        assert "retal" in r.detalle.lower()
+
+    def test_pass_con_ot_normal(self):
+        """OT con tableros >0 sigue exigiendo PDF por combinación."""
+        piezas = [_pieza(material="PLY", gama="LAM", acabado="Pale")]
+        nombres = ["EU21822_Sabine_PLY_LAM_PALE.pdf"]
+        ot = _ot()  # num_tableros_total = 2
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "PASS"
+
+    def test_fail_con_ot_normal_falta_pdf(self):
+        """OT con tableros >0 y falta el PDF de nesting → FAIL (no es retal)."""
+        piezas = [_pieza(material="MDF", gama="LAC", acabado="Crema")]
+        nombres = ["DESPIECE_SP-20742-INC.xlsx"]
+        ot = _ot(tableros={"MDF_LAC_Crema": 1}, num_tableros_total=1)
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "FAIL"
