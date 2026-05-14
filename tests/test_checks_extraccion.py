@@ -268,11 +268,12 @@ class TestC72:
 class TestC73:
 
     def test_pass_dentro_de_tolerancia(self, reglas):
-        # OT: 62.32, EXTRACCION: 63 → diff 0.68 ≤ 1.0 → PASS
+        # OT: 62.32, EXTRACCION: 63 → diff 0.68 mt ≤ 4 → PASS
         r = check_metros_canto(_extr(metros_canto=63.0), _ot(metros_canto=62.32), reglas)
         assert r.resultado == "PASS"
 
     def test_warn_fuera_de_tolerancia(self, reglas):
+        # OT: 62.32, EXTRACCION: 70 → diff 7.68 mt > 4 → WARN
         r = check_metros_canto(_extr(metros_canto=70.0), _ot(metros_canto=62.32), reglas)
         assert r.resultado == "WARN"
 
@@ -285,25 +286,40 @@ class TestC73:
         assert r.resultado == "SKIP"
 
     def test_pass_multimaterial_acumulado(self, reglas):
-        """EU-22427 real: OT=97.01, EXTR=98 (61+37) → diff 1.02% ≤ 2%."""
+        """EU-22427 real: OT=97.01, EXTR=98 → diff 0.99 mt ≤ 4 → PASS."""
         r = check_metros_canto(
             _extr(metros_canto=98.0), _ot(metros_canto=97.01), reglas,
         )
         assert r.resultado == "PASS"
 
-    def test_warn_fuera_porcentaje(self, reglas):
-        """Tolerancia 2% sobre OT=100 mt → más de ±2 mt es WARN."""
+    def test_pass_en_el_limite(self, reglas):
+        """Diff exactamente igual a la tolerancia (±4 mt) → PASS."""
         r = check_metros_canto(
-            _extr(metros_canto=103.0), _ot(metros_canto=100.0), reglas,
+            _extr(metros_canto=104.0), _ot(metros_canto=100.0), reglas,
+        )
+        assert r.resultado == "PASS"
+
+    def test_warn_justo_fuera_de_tolerancia(self, reglas):
+        """Diff 4.01 mt > 4 → WARN."""
+        r = check_metros_canto(
+            _extr(metros_canto=104.01), _ot(metros_canto=100.0), reglas,
         )
         assert r.resultado == "WARN"
-        assert "%" in r.detalle
+        assert "tolerancia" in r.detalle.lower()
+        assert "mt" in r.detalle
 
-    def test_pass_proyecto_grande(self, reglas):
-        """OT=500 mt, EXTR=505 → diff 5 mt = 1% ≤ 2% → PASS.
-        Antes con tolerancia ±1 mt absoluta esto fallaba."""
+    def test_warn_proyecto_grande_5mt(self, reglas):
+        """OT=500 mt, EXTR=505 → diff 5 mt > 4 → WARN.
+        Antes con tolerancia 2% esto pasaba (1%); ahora con ±4 mt absoluta no."""
         r = check_metros_canto(
             _extr(metros_canto=505.0), _ot(metros_canto=500.0), reglas,
+        )
+        assert r.resultado == "WARN"
+
+    def test_pass_diff_por_debajo(self, reglas):
+        """EXTRACCION puede ser menor que OT también (diff abs)."""
+        r = check_metros_canto(
+            _extr(metros_canto=58.32), _ot(metros_canto=62.32), reglas,
         )
         assert r.resultado == "PASS"
 

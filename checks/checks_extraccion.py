@@ -160,15 +160,15 @@ def check_logistica_envio(
 def check_metros_canto(
     extr: ExtraccionData, ot: OTData, reglas: dict,
 ) -> CheckResult:
-    """C-73: WARN. Tolerancia porcentual sobre los metros de la OT.
+    """C-73: WARN. Tolerancia absoluta en metros sobre la OT.
 
     En proyectos multi-material el sistema redondea cada material al entero
-    superior por separado y luego se suma, lo que acumula error proporcional
-    al nº de materiales. Por eso usamos porcentaje (no mt absolutos).
+    superior por separado y luego se suma, lo que acumula error de redondeo;
+    una tolerancia absoluta de ±4 mt absorbe ese acumulado.
     """
-    desc = "Metros de canto EXTRACCION ≈ OT (con tolerancia porcentual)"
+    desc = "Metros de canto EXTRACCION ≈ OT (tolerancia absoluta)"
     cfg = (reglas or {}).get("extraccion", {}) or {}
-    tol_pct = float(cfg.get("tolerancia_metros_canto_pct", 2.0))
+    tol_mt = float(cfg.get("tolerancia_metros_canto_mt", 4.0))
 
     if not ot.metros_canto:
         return _skip("C-73", desc, "OT no declara metros lineales de corte", _GRUPO)
@@ -176,12 +176,11 @@ def check_metros_canto(
         return _skip("C-73", desc, "EXTRACCION no declara metros de canto", _GRUPO)
 
     diff = abs(extr.metros_canto - ot.metros_canto)
-    diff_pct = (diff / ot.metros_canto) * 100.0
-    if diff_pct > tol_pct:
+    if diff > tol_mt:
         return _warn(
             "C-73", desc,
             f"EXTRACCION {extr.metros_canto} mt vs OT {ot.metros_canto} mt "
-            f"(diferencia {diff:.2f} mt = {diff_pct:.2f}% > tolerancia {tol_pct}%)",
+            f"(diferencia {diff:.2f} mt > tolerancia ±{tol_mt:g} mt)",
             _GRUPO,
         )
     return _pass("C-73", desc, False, _GRUPO)
