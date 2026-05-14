@@ -8,6 +8,7 @@ JWT se refrescan automáticamente por google-auth cuando expiran).
 
 from __future__ import annotations
 
+import threading
 from functools import lru_cache
 from typing import Any
 
@@ -26,6 +27,46 @@ import config
 _DRIVE_HTTP_TIMEOUT = 30
 
 
+#: Lock global para serializar requests HTTP a la Drive API.
+#:
+#: httplib2 (transporte por defecto de google-api-python-client) NO es
+#: thread-safe: reusa un único socket SSL por host y dos hilos llamando
+#: SSL_read en paralelo revientan OpenSSL con un segfault (CRYPTO_malloc).
+#:
+#: En Streamlit Cloud esto se dispara cuando dos cache misses concurrentes
+#: (p.ej. _listar_semanas_cached + _listar_proyectos_cached) atacan el
+#: mismo servicio cacheado a la vez. Serializar las llamadas en el cliente
+#: es la solución estándar mientras no migremos a un transporte
+#: thread-safe (httpx).
+_drive_http_lock = threading.Lock()
+
+
+class _LockedHttp:
+    """Envoltorio thread-safe sobre el http object usado por googleapiclient.
+
+    Serializa `.request()` con un lock global; el resto de accesos a
+    atributos se delegan al inner (lectura) o se aplican sobre el inner
+    (escritura) para mantener la compatibilidad con googleapiclient, que
+    a veces consulta/modifica flags del transporte.
+    """
+
+    def __init__(self, inner: Any) -> None:
+        object.__setattr__(self, "_inner", inner)
+
+    def request(self, *args, **kwargs):
+        with _drive_http_lock:
+            return self._inner.request(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_inner":
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self._inner, name, value)
+
+
 @lru_cache(maxsize=1)
 def obtener_credenciales() -> service_account.Credentials:
     """Credenciales de la Service Account (cacheadas, thread-safe para refresh)."""
@@ -42,7 +83,9 @@ def obtener_servicio_drive() -> Any:
     Service Account configurada en Streamlit Secrets / entorno.
 
     El resultado se cachea: todas las llamadas subsiguientes reutilizan
-    el mismo servicio. Los tokens OAuth se refrescan internamente.
+    el mismo servicio. Los tokens OAuth se refrescan internamente. Todas
+    las requests HTTP están serializadas con un lock para evitar el
+    segfault de httplib2 bajo concurrencia (ver _drive_http_lock).
 
     Returns:
         googleapiclient.discovery.Resource ya listo para operar.
@@ -54,7 +97,7 @@ def obtener_servicio_drive() -> Any:
         obtener_credenciales(),
         http=httplib2.Http(timeout=_DRIVE_HTTP_TIMEOUT),
     )
-    return build("drive", "v3", http=http, cache_discovery=False)
+    return build("drive", "v3", http=_LockedHttp(http), cache_discovery=False)
 
 
 def resetear_servicio_cache() -> None:
