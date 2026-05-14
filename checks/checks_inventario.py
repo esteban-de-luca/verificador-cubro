@@ -62,7 +62,7 @@ def check_documentos_presentes(nombres_archivos: list[str], reglas: dict) -> Che
 # C-01: ID de proyecto consistente en todos los archivos
 # ---------------------------------------------------------------------------
 
-_RE_ID_ARCHIVO = re.compile(r"(?<![A-Za-z])((?:EU|SP)-?\d{5}(?:[-_]INC)?)", re.IGNORECASE)
+_RE_ID_ARCHIVO = re.compile(r"(?<![A-Za-z])((?:EU|SP)-?\d{5}(?:[-_]INC\d*)?)", re.IGNORECASE)
 
 
 def check_id_consistente(nombres_archivos: list[str], id_proyecto: str) -> CheckResult:

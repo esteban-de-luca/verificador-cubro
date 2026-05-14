@@ -744,6 +744,14 @@ class TestLeerOT:
             ot = leer_ot(io.BytesIO(b"irrelevante"))
         assert ot.id_proyecto == "SP-21493-INC"
 
+    def test_extrae_inc2(self):
+        """PASS: SP-20848-INC2 (incidencia sucesiva) se reconoce íntegro,
+        no truncado a -INC."""
+        texto = "SP-20848-INC2  Ana Dopazo\nSemana 23"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.id_proyecto == "SP-20848-INC2"
+
     def test_extrae_num_piezas(self):
         """PASS: 'Total piezas: 24' extraído."""
         texto = "EU-21822\nTotal piezas: 24\nPeso total: 125,4 kg"
@@ -913,6 +921,20 @@ class TestLeerCodigoDestino:
         texto = "EU-21822-INC\nCliente\nEspaña"
         with patch("core.extractor_pdfs_logistica.pdfplumber.open", return_value=self._mock(texto)):
             assert leer_codigo_destino(io.BytesIO(b"x")) == "CUB-EU-21822-INC"
+
+    def test_codigo_cub_con_guion_bajo_normaliza_a_guion(self):
+        """SP-20848-INC2 real: el texto bajo el barcode es
+        'CUB-SP-20848_INC2-1-1'. El extractor captura el ID del proyecto y
+        normaliza '_' → '-' para devolver la forma canónica."""
+        texto = "SP-20848-INC2\nAna Dopazo\nEspaña\nCUB-SP-20848_INC2-1-1"
+        with patch("core.extractor_pdfs_logistica.pdfplumber.open", return_value=self._mock(texto)):
+            assert leer_codigo_destino(io.BytesIO(b"x")) == "CUB-SP-20848-INC2"
+
+    def test_fallback_proyecto_inc3(self):
+        """PASS: variantes INC3 también se detectan en fallback."""
+        texto = "EU-21822-INC3\nCliente\nEspaña"
+        with patch("core.extractor_pdfs_logistica.pdfplumber.open", return_value=self._mock(texto)):
+            assert leer_codigo_destino(io.BytesIO(b"x")) == "CUB-EU-21822-INC3"
 
     def test_none_si_pdf_sin_id(self):
         """PASS: PDF sin ningún ID reconocible → None."""
