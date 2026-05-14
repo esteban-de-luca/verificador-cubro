@@ -163,6 +163,25 @@ class TestC53:
         r = check_formato_id_bulto(filas, "SP-17124-INC")
         assert r.resultado == "PASS"
 
+    def test_pass_inc2_underscore(self):
+        """Caso real SP-20848-INC2: EAN emite 'CUB-SP-20848_INC2-1-1'."""
+        filas = [_fila(id_bulto="CUB-SP-20848_INC2-1-1")]
+        r = check_formato_id_bulto(filas, "SP-20848-INC2")
+        assert r.resultado == "PASS"
+
+    def test_pass_inc3_guion(self):
+        """Variante INC3 con guion también se acepta."""
+        filas = [_fila(id_bulto="CUB-EU-21822-INC3-2-5")]
+        r = check_formato_id_bulto(filas, "EU-21822-INC3")
+        assert r.resultado == "PASS"
+
+    def test_fail_inc_distinto(self):
+        """ID bulto declara INC pero proyecto es INC2 → FAIL por
+        discrepancia de proyecto."""
+        filas = [_fila(id_bulto="CUB-SP-20848_INC-1-1")]
+        r = check_formato_id_bulto(filas, "SP-20848-INC2")
+        assert r.resultado == "FAIL"
+
 
 # ---------------------------------------------------------------------------
 # C-54
@@ -248,3 +267,15 @@ class TestC56:
     def test_pass_case_insensitive(self):
         r = check_codigo_destino_caja("cub-eu-21822", "EU-21822")
         assert r.resultado == "PASS"
+
+    def test_pass_inc2(self):
+        """Proyecto INC2: el código debe contener INC2 íntegro (en forma
+        canónica con guiones, como devuelve leer_codigo_destino)."""
+        r = check_codigo_destino_caja("CUB-SP-20848-INC2", "SP-20848-INC2")
+        assert r.resultado == "PASS"
+
+    def test_fail_inc2_codigo_truncado_a_inc(self):
+        """Si el código del DESTINO CAJA pierde la '2' final (INC en lugar
+        de INC2), debe detectarse como discrepancia."""
+        r = check_codigo_destino_caja("CUB-SP-20848-INC", "SP-20848-INC2")
+        assert r.resultado == "FAIL"
