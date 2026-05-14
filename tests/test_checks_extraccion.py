@@ -260,6 +260,47 @@ class TestC72:
         )
         assert r.resultado == "PASS"
 
+    def test_pass_paqueteria_todo_a_cero(self, reglas):
+        """SP-21888-INC real: OT 'Paqueteria', EXTRACCION con todos los tipos
+        a 0 y palets a 0 → PASS (envío por mensajería estándar)."""
+        r = check_logistica_envio(
+            _extr(caja_grande=0, caja_pequena=0,
+                  estructura_grande=0, estructura_pequena=0, palets=0),
+            _ot(modelo_envio="Paqueteria", num_palets=0),
+            reglas,
+        )
+        assert r.resultado == "PASS"
+
+    def test_pass_paqueteria_con_tilde(self, reglas):
+        """'Paquetería' con tilde debe equivaler a 'Paqueteria'."""
+        r = check_logistica_envio(
+            _extr(caja_grande=0, palets=0),
+            _ot(modelo_envio="Paquetería", num_palets=0),
+            reglas,
+        )
+        assert r.resultado == "PASS"
+
+    def test_fail_paqueteria_con_caja_activa(self, reglas):
+        """OT 'Paqueteria' pero EXTRACCION activa una caja → FAIL."""
+        r = check_logistica_envio(
+            _extr(caja_grande=1, palets=0),
+            _ot(modelo_envio="Paqueteria", num_palets=0),
+            reglas,
+        )
+        assert r.resultado == "FAIL"
+        assert "paqueteria" in r.detalle.lower()
+
+    def test_fail_paqueteria_con_palets(self, reglas):
+        """OT 'Paqueteria' con num_palets=0 pero EXTRACCION palets=1 → FAIL
+        por el check independiente de palets."""
+        r = check_logistica_envio(
+            _extr(caja_grande=0, palets=1),
+            _ot(modelo_envio="Paqueteria", num_palets=0),
+            reglas,
+        )
+        assert r.resultado == "FAIL"
+        assert "palets" in r.detalle.lower()
+
 
 # ---------------------------------------------------------------------------
 # C-73: metros de canto (WARN con tolerancia)
@@ -386,6 +427,47 @@ class TestC74:
             naming,
         )
         assert r.resultado == "PASS"
+
+    def test_skip_proyecto_de_retal(self, naming):
+        """SP-21888-INC real: EXTRACCION declara HPL_Sab_tab:0 y OT declara
+        la combinación con # Tableros:0 (cortado de retal) → SKIP."""
+        r = check_tableros_codificados(
+            _extr(tableros_codificados={"HPL_Pal_tab": 0}),
+            _ot(tableros={"PLY_LAM_Pale": 0}),
+            naming,
+        )
+        assert r.resultado == "SKIP"
+
+    def test_pass_cantidad_cero_ignorada_en_extr(self, naming):
+        """EXTRACCION declara una clave con 0 y otra con cantidad real;
+        la de 0 se ignora y la real cuadra con OT → PASS."""
+        r = check_tableros_codificados(
+            _extr(tableros_codificados={"LAC_Zaf_tab": 2, "HPL_Pal_tab": 0}),
+            _ot(tableros={"MDF_LAC_Zafiro": 2}),
+            naming,
+        )
+        assert r.resultado == "PASS"
+
+    def test_pass_cantidad_cero_en_ambos_lados(self, naming):
+        """EXTRACCION y OT tienen una entrada con 0 (ignorada) + las reales
+        que cuadran → PASS."""
+        r = check_tableros_codificados(
+            _extr(tableros_codificados={"LAC_Zaf_tab": 2, "HPL_Pal_tab": 0}),
+            _ot(tableros={"MDF_LAC_Zafiro": 2, "PLY_LAM_Pale": 0}),
+            naming,
+        )
+        assert r.resultado == "PASS"
+
+    def test_fail_extr_cero_pero_ot_real(self, naming):
+        """Si EXTRACCION declara una combinación con 0 pero OT declara la
+        misma con cantidad real, EXTRACCION falta → FAIL."""
+        r = check_tableros_codificados(
+            _extr(tableros_codificados={"HPL_Pal_tab": 0}),
+            _ot(tableros={"PLY_LAM_Pale": 2}),
+            naming,
+        )
+        assert r.resultado == "FAIL"
+        assert "EXTRACCION no declara" in r.detalle
 
 
 # ---------------------------------------------------------------------------

@@ -117,6 +117,14 @@ def _parsear_modelos_envio_ot(modelo_envio: str) -> set[str]:
     return {p for p in (_normalizar_modelo(x) for x in modelo_envio.split("+")) if p}
 
 
+def _es_paqueteria(modelo_envio: str) -> bool:
+    """True si el modelo de envío es exclusivamente 'Paqueteria' (con o sin
+    tilde, case-insensitive). Indica envío por mensajería estándar — sin
+    palets y sin caja/estructura.
+    """
+    return _parsear_modelos_envio_ot(modelo_envio) == {"paqueteria"}
+
+
 def check_logistica_envio(
     extr: ExtraccionData, ot: OTData, reglas: dict,
 ) -> CheckResult:
@@ -128,6 +136,9 @@ def check_logistica_envio(
       declarar uno o varios modelos combinados con '+', p. ej.
       'Caja grande + Estructura pequena' — en ese caso EXTRACCION debe
       tener exactamente esos N tipos a ≥1 y el resto a 0.
+    - Caso especial 'Paqueteria': típico en incidencias P1 o proyectos
+      pequeños cortados de retal. EXTRACCION debe tener TODOS los tipos
+      a 0 y palets a 0 (el bulto va por mensajería estándar).
     """
     desc = "Logística (palets + tipos de envío) coherente con OT"
     errores: list[str] = []
@@ -138,7 +149,14 @@ def check_logistica_envio(
     cfg = (reglas or {}).get("extraccion", {}).get("tipos_envio", {}) or {}
     activos = [n for n in _TIPOS_ENVIO if getattr(extr, n) >= 1]
 
-    if not activos:
+    if _es_paqueteria(ot.modelo_envio):
+        if activos:
+            extr_legible = " + ".join(cfg.get(n, n) for n in activos)
+            errores.append(
+                f"Modelo de envío: OT 'Paqueteria' incompatible con "
+                f"EXTRACCION '{extr_legible}' (todos los tipos deben ser 0)"
+            )
+    elif not activos:
         errores.append("Tipo de envío: ningún tipo está activo (todos a 0)")
     elif ot.modelo_envio:
         modelos_extr_norm = {_normalizar_modelo(cfg.get(n, "")) for n in activos}
@@ -199,6 +217,11 @@ def check_tableros_codificados(
 
     Decodifica cada clave <COD>_tab de EXTRACCION (vía naming_extraccion.csv) a
     su clave canónica 'MATERIAL_GAMA_Acabado' y la compara con OT.tableros.
+
+    Las claves con cantidad 0 se ignoran en ambos lados: indican "no hay
+    tableros nuevos de esta combinación" — típico en incidencias cortadas
+    de retal donde la OT declara '# Tableros: 0'. Si ambos lados quedan
+    vacíos tras filtrar, el check se salta (SKIP).
     """
     desc = "Tableros <COD>_tab decodificados ↔ tabla CORTE OT"
 
@@ -210,6 +233,8 @@ def check_tableros_codificados(
     errores: list[str] = []
     cods_decodificados: dict[str, int] = {}
     for cod_tab, cantidad in extr.tableros_codificados.items():
+        if cantidad == 0:
+            continue
         clave_canonica = cod_tab_a_clave_canonica(cod_tab, naming)
         if clave_canonica is None:
             errores.append(f"Código '{cod_tab}' no se reconoce en naming_extraccion.csv")
@@ -218,9 +243,18 @@ def check_tableros_codificados(
             cods_decodificados.get(clave_canonica, 0) + cantidad
         )
 
+    ot_tableros = {k: v for k, v in ot.tableros.items() if v > 0}
+
+    if not cods_decodificados and not ot_tableros:
+        return _skip(
+            "C-74", desc,
+            "Proyecto sin tableros nuevos (probablemente cortado de retal)",
+            _GRUPO,
+        )
+
     # Lado EXTRACCION → OT: cada combinación del EXTRACCION debe estar en OT
     for clave, cantidad in cods_decodificados.items():
-        en_ot = ot.tableros.get(clave, 0)
+        en_ot = ot_tableros.get(clave, 0)
         if en_ot == 0:
             errores.append(
                 f"OT no declara la combinación '{clave}' (EXTRACCION dice {cantidad})"
@@ -231,7 +265,7 @@ def check_tableros_codificados(
             )
 
     # Lado OT → EXTRACCION
-    for clave, cantidad in ot.tableros.items():
+    for clave, cantidad in ot_tableros.items():
         if clave not in cods_decodificados:
             errores.append(
                 f"EXTRACCION no declara la combinación '{clave}' (OT dice {cantidad})"
