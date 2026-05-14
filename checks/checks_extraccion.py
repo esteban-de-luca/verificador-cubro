@@ -92,44 +92,62 @@ def check_recuentos_criticos(extr: ExtraccionData, ot: OTData) -> CheckResult:
 
 
 # ---------------------------------------------------------------------------
-# C-72: logística — palets + tipo de envío único activo
+# C-72: logística — palets + tipos de envío activos (mono o multi-envío)
 # ---------------------------------------------------------------------------
+
+_TIPOS_ENVIO = ("caja_grande", "caja_pequena",
+                "estructura_grande", "estructura_pequena")
+
+
+def _normalizar_modelo(texto: str) -> str:
+    """lower + strip + sin tildes; 'Caja pequeña' ≡ 'caja pequena'."""
+    if not texto:
+        return ""
+    s = texto.strip().lower()
+    for a, b in (("á", "a"), ("é", "e"), ("í", "i"),
+                 ("ó", "o"), ("ú", "u"), ("ñ", "n")):
+        s = s.replace(a, b)
+    return s
+
+
+def _parsear_modelos_envio_ot(modelo_envio: str) -> set[str]:
+    """Divide 'Modelo de envío' OT por '+' (multi-envío) y normaliza."""
+    if not modelo_envio:
+        return set()
+    return {p for p in (_normalizar_modelo(x) for x in modelo_envio.split("+")) if p}
+
 
 def check_logistica_envio(
     extr: ExtraccionData, ot: OTData, reglas: dict,
 ) -> CheckResult:
     """C-72: FAIL bloqueante.
 
-    - 'Cantidad de palets' EXTRACCION == OT
-    - Exactamente UN tipo de envío activo (caja/estructura grande/pequeña)
-      y coincide con 'Modelo de envío' de la OT.
+    - 'Cantidad de palets' EXTRACCION == OT.
+    - El conjunto de tipos de envío activos (caja/estructura grande/pequeña)
+      en EXTRACCION coincide con 'Modelo de envío' de la OT. La OT puede
+      declarar uno o varios modelos combinados con '+', p. ej.
+      'Caja grande + Estructura pequena' — en ese caso EXTRACCION debe
+      tener exactamente esos N tipos a ≥1 y el resto a 0.
     """
-    desc = "Logística (palets + tipo de envío) coherente con OT"
+    desc = "Logística (palets + tipos de envío) coherente con OT"
     errores: list[str] = []
 
     if ot.num_palets is not None and extr.palets != ot.num_palets:
         errores.append(f"Palets: EXTRACCION {extr.palets} ≠ OT {ot.num_palets}")
 
     cfg = (reglas or {}).get("extraccion", {}).get("tipos_envio", {}) or {}
-    tipo = extr.tipo_envio_activo
-    if not tipo:
-        activos = [
-            n for n in ("caja_grande", "caja_pequena",
-                        "estructura_grande", "estructura_pequena")
-            if getattr(extr, n) >= 1
-        ]
-        if not activos:
-            errores.append("Tipo de envío: ningún tipo está activo (todos a 0)")
-        else:
-            errores.append(f"Tipo de envío: más de uno activo ({', '.join(activos)})")
-    else:
-        nombre_canonico = cfg.get(tipo, "")
-        if (
-            nombre_canonico and ot.modelo_envio
-            and nombre_canonico.lower() != ot.modelo_envio.lower()
-        ):
+    activos = [n for n in _TIPOS_ENVIO if getattr(extr, n) >= 1]
+
+    if not activos:
+        errores.append("Tipo de envío: ningún tipo está activo (todos a 0)")
+    elif ot.modelo_envio:
+        modelos_extr_norm = {_normalizar_modelo(cfg.get(n, "")) for n in activos}
+        modelos_extr_norm.discard("")
+        modelos_ot_norm = _parsear_modelos_envio_ot(ot.modelo_envio)
+        if modelos_extr_norm != modelos_ot_norm:
+            extr_legible = " + ".join(cfg.get(n, n) for n in activos)
             errores.append(
-                f"Modelo de envío: EXTRACCION '{nombre_canonico}' ≠ OT '{ot.modelo_envio}'"
+                f"Modelo de envío: EXTRACCION '{extr_legible}' ≠ OT '{ot.modelo_envio}'"
             )
 
     return _resultado("C-72", desc, errores, True, _GRUPO)

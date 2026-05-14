@@ -190,10 +190,11 @@ class TestC72:
         assert r.resultado == "FAIL"
         assert "ningún tipo" in r.detalle.lower() or "ningun tipo" in r.detalle.lower()
 
-    def test_fail_multiple_tipos_envio(self, reglas):
+    def test_fail_extr_multi_pero_ot_mono(self, reglas):
+        """EXTRACCION tiene 2 tipos activos pero OT solo declara uno → FAIL."""
         r = check_logistica_envio(_extr(caja_pequena=1), _ot(), reglas)
         assert r.resultado == "FAIL"
-        assert "más de uno" in r.detalle.lower() or "mas de uno" in r.detalle.lower()
+        assert "modelo de envío" in r.detalle.lower()
 
     def test_fail_modelo_envio_no_coincide(self, reglas):
         r = check_logistica_envio(
@@ -207,6 +208,54 @@ class TestC72:
         r = check_logistica_envio(
             _extr(caja_grande=0, estructura_pequena=1),
             _ot(modelo_envio="Estructura pequeña"),
+            reglas,
+        )
+        assert r.resultado == "PASS"
+
+    def test_pass_multi_envio_caja_y_estructura(self, reglas):
+        """SP-22687 real: OT 'Caja grande + Estructura pequena', EXTRACCION
+        con caja_grande=1 y estructura_pequena=1 → PASS."""
+        r = check_logistica_envio(
+            _extr(caja_grande=1, estructura_pequena=1, palets=2),
+            _ot(modelo_envio="Caja grande + Estructura pequena", num_palets=2),
+            reglas,
+        )
+        assert r.resultado == "PASS"
+
+    def test_pass_multi_envio_tildes_y_espacios(self, reglas):
+        """OT con 'pequeña' (con tilde) y espacios irregulares ≡ 'pequena'."""
+        r = check_logistica_envio(
+            _extr(caja_grande=1, estructura_pequena=1, palets=2),
+            _ot(modelo_envio="Caja grande  +  Estructura pequeña", num_palets=2),
+            reglas,
+        )
+        assert r.resultado == "PASS"
+
+    def test_fail_multi_envio_extr_falta_un_tipo(self, reglas):
+        """OT declara dos modelos pero EXTRACCION sólo activa uno → FAIL."""
+        r = check_logistica_envio(
+            _extr(caja_grande=1, estructura_pequena=0, palets=2),
+            _ot(modelo_envio="Caja grande + Estructura pequena", num_palets=2),
+            reglas,
+        )
+        assert r.resultado == "FAIL"
+        assert "modelo de envío" in r.detalle.lower()
+
+    def test_fail_multi_envio_extr_tiene_tipo_extra(self, reglas):
+        """EXTRACCION tiene un tipo extra que OT no declara → FAIL."""
+        r = check_logistica_envio(
+            _extr(caja_grande=1, estructura_pequena=1,
+                  estructura_grande=1, palets=2),
+            _ot(modelo_envio="Caja grande + Estructura pequena", num_palets=2),
+            reglas,
+        )
+        assert r.resultado == "FAIL"
+
+    def test_pass_extr_multi_pero_ot_sin_modelo(self, reglas):
+        """Si OT no declara modelo_envio no se compara, solo se exige ≥1 activo."""
+        r = check_logistica_envio(
+            _extr(caja_grande=1, estructura_pequena=1),
+            _ot(modelo_envio=""),
             reglas,
         )
         assert r.resultado == "PASS"
