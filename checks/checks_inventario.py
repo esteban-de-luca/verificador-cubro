@@ -175,16 +175,29 @@ _RE_NESTING_PDF = re.compile(
 
 
 def check_pdfs_nesting_vs_materiales(
-    nombres_archivos: list[str], piezas: list[Pieza]
+    nombres_archivos: list[str],
+    piezas: list[Pieza],
+    ot: OTData | None = None,
 ) -> CheckResult:
     """
     C-04: Debe haber un PDF de nesting por cada combinación única
     material+gama+acabado presente en el DESPIECE.
+
+    Cuando la OT declara 'Cantidad de tableros: 0' significa que el proyecto
+    se corta de retal (típico en incidencias P1/P2 con una sola pieza), no
+    hay nesting que generar y el check SKIPea.
+
     Bloquea: Sí.
     """
+    desc = "PDFs nesting == combinaciones material DESPIECE"
     if not piezas:
-        return _skip("C-04", "PDFs nesting == combinaciones material DESPIECE",
-                     "DESPIECE sin piezas", _GRUPO)
+        return _skip("C-04", desc, "DESPIECE sin piezas", _GRUPO)
+    if ot is not None and ot.num_tableros_total == 0:
+        return _skip(
+            "C-04", desc,
+            "OT declara 0 tableros (proyecto cortado de retal)",
+            _GRUPO,
+        )
 
     combos_esperados = {p.clave_material for p in piezas}
     n_pdfs_nesting = sum(
@@ -194,10 +207,10 @@ def check_pdfs_nesting_vs_materiales(
     n_esperado = len(combos_esperados)
 
     if n_pdfs_nesting == n_esperado:
-        return _pass("C-04", "PDFs nesting == combinaciones material DESPIECE", True, _GRUPO)
+        return _pass("C-04", desc, True, _GRUPO)
 
     return _fail(
-        "C-04", "PDFs nesting == combinaciones material DESPIECE",
+        "C-04", desc,
         f"PDFs nesting detectados: {n_pdfs_nesting} | Combinaciones DESPIECE: {n_esperado} "
         f"({', '.join(sorted(combos_esperados))})",
         True, _GRUPO,
