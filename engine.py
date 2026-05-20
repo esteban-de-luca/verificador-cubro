@@ -103,6 +103,9 @@ from checks.checks_extraccion import (
     check_tabla_tipologia_mecanizado,
     check_tabla_tirador,
     check_baldas_herrajes,
+    check_altillos,
+    check_hornacinas,
+    check_mueble_nevera,
 )
 
 log = logging.getLogger(__name__)
@@ -357,6 +360,9 @@ def _ejecutar_checks(
             ("C-78", "Tabla EXTRACCION: tipología + mecanizado ↔ DESPIECE"),
             ("C-79", "Tabla EXTRACCION: tirador/posición/apertura/color ↔ DESPIECE"),
             ("C-80", "Baldas con herrajes (EXTRACCION) ↔ DESPIECE tipología B"),
+            ("C-81", "Altillos EXTRACCION ↔ OT (total + desglose por dimensión)"),
+            ("C-82", "Nº de hornacinas EXTRACCION ↔ OT"),
+            ("C-83", "Mueble de nevera EXTRACCION ↔ OT"),
         ):
             resultados.append(CheckResult(cid, desc, "SKIP", motivo, False, "Extraccion"))
     else:
@@ -371,6 +377,9 @@ def _ejecutar_checks(
         resultados.append(check_tabla_tipologia_mecanizado(datos.extraccion, datos.piezas))
         resultados.append(check_tabla_tirador(datos.extraccion, datos.piezas))
         resultados.append(check_baldas_herrajes(datos.extraccion, datos.piezas, reglas))
+        resultados.append(check_altillos(datos.extraccion, ot))
+        resultados.append(check_hornacinas(datos.extraccion, ot))
+        resultados.append(check_mueble_nevera(datos.extraccion, ot))
 
     return resultados
 

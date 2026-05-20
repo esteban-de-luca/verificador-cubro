@@ -174,6 +174,39 @@ class TestSeccionA:
         d = leer_extraccion(_csv_en_memoria(csv), reglas)
         assert any("Campo Inexistente" in c for c in d.claves_desconocidas)
 
+    def test_altillos_sin_valor(self, reglas):
+        """Fila 'Altillos' sin valores → total=0, dims vacío."""
+        d = leer_extraccion(_csv_en_memoria(CSV_BASE), reglas)
+        assert d.altillos_total == 0
+        assert d.altillos_dims == {}
+
+    def test_altillos_con_desglose(self, reglas):
+        """Fila 'Altillos,6,997x480x580,4,497x480x580,2' → total + dims."""
+        csv = CSV_BASE.replace(
+            "Altillos\n",
+            "Altillos,6,997x480x580,4,497x480x580,2\n",
+        )
+        d = leer_extraccion(_csv_en_memoria(csv), reglas)
+        assert d.altillos_total == 6
+        assert d.altillos_dims == {"997x480x580": 4, "497x480x580": 2}
+
+    def test_altillos_solo_total_sin_desglose(self, reglas):
+        """Fila 'Altillos,3' (total agregado, sin desglose por dim)."""
+        csv = CSV_BASE.replace("Altillos\n", "Altillos,3\n")
+        d = leer_extraccion(_csv_en_memoria(csv), reglas)
+        assert d.altillos_total == 3
+        assert d.altillos_dims == {}
+
+    def test_altillos_no_va_a_claves_desconocidas(self, reglas):
+        """Las dimensiones de altillos no deben aparecer en claves_desconocidas."""
+        csv = CSV_BASE.replace(
+            "Altillos\n",
+            "Altillos,6,997x480x580,4,497x480x580,2\n",
+        )
+        d = leer_extraccion(_csv_en_memoria(csv), reglas)
+        assert not any("997x480x580" in c for c in d.claves_desconocidas)
+        assert not any("497x480x580" in c for c in d.claves_desconocidas)
+
 
 # ---------------------------------------------------------------------------
 # Multi-material: pares (clave, valor) repetidos en la MISMA fila

@@ -142,6 +142,10 @@ class OTData:
     num_palets: int | None = None        # "Cantidad de palets: 1 ud." → 1; None si ausente
     modelo_envio: str = ""               # "Modelo de envío: Caja grande" → "Caja grande"
     metros_canto: float = 0.0            # "Mts lineales de corte: 62,32 mt" → 62.32
+    # Otros elementos del bloque "Otros elementos:" (C-81, C-82, C-83)
+    altillos_dims: dict[str, int] = field(default_factory=dict)  # {"997x480x580": 4, "497x480x580": 2}
+    num_hornacinas: int = 0              # "Cantidad de hornacinas:4 uds" → 4; 0 si no aparece
+    tiene_mueble_nevera: bool = False    # "Mueble de nevera 75x60x220 cm" presente → True
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +245,11 @@ class ExtraccionData:
     mueble_nevera: int = 0                 # Mueble de nevera 75x60x220 cm
     baldas_2h: int = 0                     # Baldas con 2 herrajes ocultos
     baldas_3h: int = 0                     # Baldas con 3 herrajes ocultos
+    # Altillos: fila especial "Altillos,N,DIM1,Q1,DIM2,Q2,..." en el CSV.
+    # altillos_total es el agregado declarado (primer valor tras la clave).
+    # altillos_dims desglosa por dimensión (key: "997x480x580", value: cantidad).
+    altillos_total: int = 0
+    altillos_dims: dict[str, int] = field(default_factory=dict)
     # Tipos de envío (uno solo debe ser ≥1; los otros 0)
     caja_grande: int = 0
     caja_pequena: int = 0

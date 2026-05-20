@@ -208,6 +208,15 @@ def leer_extraccion(
                 cabecera_tabla = [_normalizar_clave(c) for c in fila]
                 continue
 
+            # Caso especial: fila Altillos con formato propio
+            #   "Altillos,N"                            (sin altillos o total agregado)
+            #   "Altillos,N,DIM1,Q1,DIM2,Q2,..."        (total + desglose por dimensión)
+            # El loop genérico de pares no entiende la posición, así que la
+            # consumimos aquí entera y saltamos al siguiente row.
+            if _normalizar_clave(fila[0]) == "altillos":
+                _procesar_fila_altillos(data, fila)
+                continue
+
             # Sección A: la fila puede contener MÚLTIPLES pares (clave, valor)
             # cuando el proyecto es multi-material. Ejemplo:
             #   LAC_Pin_tab,2,LAC_Rot_tab,1
@@ -262,6 +271,35 @@ _CAMPOS_INT = frozenset({
     "hornacinas", "palets", "mueble_nevera", "baldas_2h", "baldas_3h",
     "caja_grande", "caja_pequena", "estructura_grande", "estructura_pequena",
 })
+
+
+def _procesar_fila_altillos(data: ExtraccionData, fila: list[str]) -> None:
+    """Procesa la fila especial "Altillos,N,DIM1,Q1,DIM2,Q2,...".
+
+    Formato:
+      - "Altillos"                      → sin altillos (total=0, dims={})
+      - "Altillos,N"                    → total agregado N, sin desglose
+      - "Altillos,N,DIM1,Q1,DIM2,Q2,…"  → total N + desglose por dimensión
+
+    DIM_i son cadenas tipo "997x480x580" (mm implícitos). Si la fila aparece
+    varias veces en EXTRACCIONes multi-material (caso raro, los altillos son
+    de proyecto y no por gama), las cantidades se acumulan.
+    """
+    if len(fila) < 2:
+        return  # solo la clave, sin valor → ya está a 0 por defecto
+
+    data.altillos_total += _int_o(fila[1])
+
+    # Pares (dim, qty) desde el índice 2 en adelante
+    i = 2
+    while i + 1 < len(fila):
+        dim = fila[i].strip()
+        qty = fila[i + 1].strip()
+        if dim and qty:
+            data.altillos_dims[dim] = (
+                data.altillos_dims.get(dim, 0) + _int_o(qty)
+            )
+        i += 2
 
 
 def _procesar_par_a(

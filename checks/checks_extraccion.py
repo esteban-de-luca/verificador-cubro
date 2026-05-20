@@ -492,3 +492,85 @@ def check_baldas_herrajes(
         )
 
     return _resultado("C-80", desc, errores, False, _GRUPO, tipo_fail="WARN")
+
+
+# ---------------------------------------------------------------------------
+# C-81: Altillos EXTRACCION ↔ OT — total + desglose por dimensión
+# ---------------------------------------------------------------------------
+
+def check_altillos(extr: ExtraccionData, ot: OTData) -> CheckResult:
+    """C-81: FAIL bloqueante.
+
+    Compara los altillos declarados en EXTRACCION con el bloque ALTILLOS
+    de la OT en dos dimensiones:
+      1) Total agregado:  extr.altillos_total  ↔  Σ ot.altillos_dims.values()
+      2) Desglose por dimensión: extr.altillos_dims[dim]  ↔  ot.altillos_dims[dim]
+
+    Si ambos lados están a 0 (proyecto sin altillos) el check pasa.
+    """
+    desc = "Altillos EXTRACCION ↔ OT (total + desglose por dimensión)"
+
+    total_ext = extr.altillos_total
+    total_ot = sum(ot.altillos_dims.values())
+
+    if total_ext == 0 and total_ot == 0:
+        return _pass("C-81", desc, True, _GRUPO)
+
+    errores: list[str] = []
+    if total_ext != total_ot:
+        errores.append(f"Total: EXTRACCION {total_ext} ≠ OT {total_ot}")
+
+    dims_todas = set(extr.altillos_dims.keys()) | set(ot.altillos_dims.keys())
+    for dim in sorted(dims_todas):
+        ext_n = extr.altillos_dims.get(dim, 0)
+        ot_n = ot.altillos_dims.get(dim, 0)
+        if ext_n != ot_n:
+            errores.append(f"Dimensión {dim}: EXTRACCION {ext_n} ≠ OT {ot_n}")
+
+    return _resultado("C-81", desc, errores, True, _GRUPO)
+
+
+# ---------------------------------------------------------------------------
+# C-82: nº de hornacinas EXTRACCION ↔ OT
+# ---------------------------------------------------------------------------
+
+def check_hornacinas(extr: ExtraccionData, ot: OTData) -> CheckResult:
+    """C-82: FAIL bloqueante.
+
+    Compara la cantidad declarada en EXTRACCION ('Hornacinas,N') con la
+    cantidad declarada en la OT ('Cantidad de hornacinas:N uds'). En
+    proyectos sin hornacinas la OT no incluye esa línea y num_hornacinas
+    se queda a 0 — debe coincidir con extr.hornacinas = 0.
+    """
+    desc = "Nº de hornacinas EXTRACCION ↔ OT"
+    if extr.hornacinas == ot.num_hornacinas:
+        return _pass("C-82", desc, True, _GRUPO)
+    return _fail(
+        "C-82", desc,
+        f"Hornacinas: EXTRACCION {extr.hornacinas} ≠ OT {ot.num_hornacinas}",
+        True, _GRUPO,
+    )
+
+
+# ---------------------------------------------------------------------------
+# C-83: presencia de mueble de nevera EXTRACCION ↔ OT
+# ---------------------------------------------------------------------------
+
+def check_mueble_nevera(extr: ExtraccionData, ot: OTData) -> CheckResult:
+    """C-83: FAIL bloqueante.
+
+    La OT no declara cantidad — solo aparece la línea "Mueble de nevera
+    75x60x220 cm" cuando hay al menos uno. Por eso la comparación es
+    binaria: extr.mueble_nevera ≥ 1 ↔ ot.tiene_mueble_nevera.
+    """
+    desc = "Mueble de nevera EXTRACCION ↔ OT"
+    tiene_ext = extr.mueble_nevera >= 1
+    if tiene_ext == ot.tiene_mueble_nevera:
+        return _pass("C-83", desc, True, _GRUPO)
+    return _fail(
+        "C-83", desc,
+        f"Mueble de nevera: EXTRACCION {extr.mueble_nevera} "
+        f"({'tiene' if tiene_ext else 'no tiene'}) ≠ OT "
+        f"({'tiene' if ot.tiene_mueble_nevera else 'no tiene'})",
+        True, _GRUPO,
+    )

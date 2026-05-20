@@ -126,6 +126,25 @@ _RE_MODELO_ENVIO = re.compile(
 _RE_METROS_CORTE = re.compile(
     r"mts?\s+lineales\s+de\s+corte[:\s]+([\d,. ]+)\s*mt", re.IGNORECASE
 )
+# Fila individual del bloque ALTILLOS — "997x480x580mm - x4 unidades".
+# Aplicada a TODO el texto con finditer porque el layout multi-columna del
+# PDF a veces concatena estas líneas con "Colgador de hornacina: No" o
+# "Kit metopas: No" en la misma fila lógica (visto en OT_SP-21328).
+_RE_ALTILLO_FILA = re.compile(
+    r"(\d+)x(\d+)x(\d+)\s*mm\s*-\s*x?\s*(\d+)\s*unidades?",
+    re.IGNORECASE,
+)
+# "Cantidad de hornacinas:4 uds" (frecuente sin espacio antes del número)
+_RE_CANT_HORNACINAS = re.compile(
+    r"cantidad\s+de\s+hornacinas?\s*:?\s*(\d+)\s*uds?", re.IGNORECASE
+)
+# "Mueble de nevera 75x60x220 cm" — presencia ≡ proyecto incluye nevera.
+# Se exige al menos un patrón "WxHxL cm" detrás para evitar matches en
+# observaciones libres ("revisar mueble de nevera").
+_RE_MUEBLE_NEVERA = re.compile(
+    r"mueble\s+de\s+nevera\s+\d+\s*x\s*\d+\s*x\s*\d+\s*cm",
+    re.IGNORECASE,
+)
 # Sección de Observaciones CNC — se detiene en la siguiente cabecera de sección
 # o en línea en blanco. Cabeceras conocidas: OBSERVACIONES DE PRODUCCIÓN, PACKING LIST.
 _RE_SEC_CNC = re.compile(
@@ -368,6 +387,20 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
     m_met = _RE_METROS_CORTE.search(texto)
     metros_canto = _float_limpio(m_met.group(1)) if m_met else 0.0
 
+    # Altillos — busca TODAS las apariciones "WxHxLmm - xN unidades" en el texto
+    altillos_dims: dict[str, int] = {}
+    for m in _RE_ALTILLO_FILA.finditer(texto):
+        a, h, l, n = m.group(1), m.group(2), m.group(3), int(m.group(4))
+        clave = f"{a}x{h}x{l}"
+        altillos_dims[clave] = altillos_dims.get(clave, 0) + n
+
+    # Cantidad de hornacinas — "Cantidad de hornacinas:4 uds"
+    m_horn = _RE_CANT_HORNACINAS.search(texto)
+    num_hornacinas = int(m_horn.group(1)) if m_horn else 0
+
+    # Mueble de nevera — presencia
+    tiene_mueble_nevera = _RE_MUEBLE_NEVERA.search(texto) is not None
+
     return OTData(
         id_proyecto=id_proyecto,
         cliente=cliente,
@@ -392,4 +425,7 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
         num_palets=num_palets,
         modelo_envio=modelo_envio,
         metros_canto=metros_canto,
+        altillos_dims=altillos_dims,
+        num_hornacinas=num_hornacinas,
+        tiene_mueble_nevera=tiene_mueble_nevera,
     )

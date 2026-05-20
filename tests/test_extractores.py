@@ -877,6 +877,75 @@ class TestLeerOT:
         assert ot.num_piezas == 0
         assert ot.tableros == {}
         assert ot.observaciones_cnc == []
+        # Defaults de C-81..C-83
+        assert ot.altillos_dims == {}
+        assert ot.num_hornacinas == 0
+        assert ot.tiene_mueble_nevera is False
+
+    def test_extrae_altillos_bloque(self):
+        """SP-21801: 'ALTILLOS\\n997x480x580mm - x4...' → desglose por dimensión."""
+        texto = (
+            "SP-21801\n"
+            "ALTILLOS\n"
+            "997x480x580mm - x4 unidades\n"
+            "497x480x580mm - x2 unidades\n"
+        )
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.altillos_dims == {"997x480x580": 4, "497x480x580": 2}
+
+    def test_extrae_altillos_layout_multicolumna(self):
+        """SP-21328: layout multi-columna que concatena dims a otras líneas
+        (visto en algunos PDFs). El extractor debe encontrar las dims igual."""
+        texto = (
+            "Otros elementos: ALTILLOS\n"
+            "Colgador de hornacina: No 497x280x580mm - x1 unidades\n"
+            "Kit metopas: No 747x280x580mm - x1 unidades\n"
+        )
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.altillos_dims == {"497x280x580": 1, "747x280x580": 1}
+
+    def test_proyecto_sin_altillos(self):
+        """'Proyecto sin altillos' → dict vacío (no hay líneas WxHxLmm)."""
+        texto = "EU-21157\nProyecto sin altillos\n"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.altillos_dims == {}
+
+    def test_extrae_num_hornacinas(self):
+        """'Cantidad de hornacinas:4 uds' (sin espacio antes del número)."""
+        texto = "SP-21801\nCantidad de hornacinas:4 uds\n"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.num_hornacinas == 4
+
+    def test_extrae_num_hornacinas_con_espacio(self):
+        """'Cantidad de hornacinas: 4 uds' (con espacio) también funciona."""
+        texto = "SP-21801\nCantidad de hornacinas: 4 uds\n"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.num_hornacinas == 4
+
+    def test_num_hornacinas_cero_si_no_aparece(self):
+        """Proyecto sin hornacinas → no aparece la línea → num_hornacinas=0."""
+        texto = "EU-21867\nOtros elementos:\nTensores: No\n"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.num_hornacinas == 0
+
+    def test_extrae_mueble_nevera_presencia(self):
+        """'Mueble de nevera 75x60x220 cm' → True."""
+        texto = "EU-21867\nMueble de nevera 75x60x220 cm\n"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.tiene_mueble_nevera is True
+
+    def test_mueble_nevera_false_si_no_aparece(self):
+        texto = "EU-21157\nTensores: No\n"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.tiene_mueble_nevera is False
 
 
 # ===========================================================================
