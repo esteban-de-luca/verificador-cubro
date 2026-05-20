@@ -30,6 +30,9 @@ from checks.checks_extraccion import (
     check_tabla_tipologia_mecanizado,
     check_tabla_tirador,
     check_baldas_herrajes,
+    check_altillos,
+    check_hornacinas,
+    check_mueble_nevera,
 )
 
 
@@ -682,3 +685,107 @@ class TestC80:
         baldas = [_pieza("B1", ancho=400, alto=500, tipologia="B")]
         r = check_baldas_herrajes(_extr(baldas_2h=0, baldas_3h=0), baldas, reglas)
         assert r.resultado == "PASS"
+
+
+# ---------------------------------------------------------------------------
+# C-81: altillos (FAIL bloqueante)
+# ---------------------------------------------------------------------------
+
+class TestC81:
+
+    def test_pass_ambos_sin_altillos(self):
+        r = check_altillos(_extr(), _ot())
+        assert r.resultado == "PASS"
+        assert r.bloquea
+
+    def test_pass_desglose_coincide(self):
+        extr = _extr(altillos_total=6, altillos_dims={"997x480x580": 4, "497x480x580": 2})
+        ot = _ot(altillos_dims={"997x480x580": 4, "497x480x580": 2})
+        r = check_altillos(extr, ot)
+        assert r.resultado == "PASS"
+
+    def test_fail_total_distinto(self):
+        """OT dice x3 cuando EXTRACCION dice x4 — caso descrito por Esteban."""
+        extr = _extr(altillos_total=6, altillos_dims={"997x480x580": 4, "497x480x580": 2})
+        ot = _ot(altillos_dims={"997x480x580": 3, "497x480x580": 2})
+        r = check_altillos(extr, ot)
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "Total" in r.detalle
+        assert "997x480x580" in r.detalle
+
+    def test_fail_dimension_faltante_en_ot(self):
+        """EXTRACCION declara una dimensión que la OT no tiene."""
+        extr = _extr(altillos_total=4, altillos_dims={"997x480x580": 2, "747x480x580": 2})
+        ot = _ot(altillos_dims={"997x480x580": 2})
+        r = check_altillos(extr, ot)
+        assert r.resultado == "FAIL"
+        assert "747x480x580" in r.detalle
+
+    def test_fail_extraccion_sin_altillos_pero_ot_si(self):
+        """EXTRACCION dice 0 altillos, OT trae bloque con altillos."""
+        ot = _ot(altillos_dims={"997x480x580": 1})
+        r = check_altillos(_extr(), ot)
+        assert r.resultado == "FAIL"
+
+    def test_fail_extraccion_con_altillos_pero_ot_no(self):
+        """EXTRACCION declara altillos, OT no los menciona."""
+        extr = _extr(altillos_total=2, altillos_dims={"497x480x580": 2})
+        r = check_altillos(extr, _ot())
+        assert r.resultado == "FAIL"
+
+
+# ---------------------------------------------------------------------------
+# C-82: hornacinas (FAIL bloqueante)
+# ---------------------------------------------------------------------------
+
+class TestC82:
+
+    def test_pass_ambos_cero(self):
+        r = check_hornacinas(_extr(), _ot())
+        assert r.resultado == "PASS"
+        assert r.bloquea
+
+    def test_pass_coincide(self):
+        r = check_hornacinas(_extr(hornacinas=4), _ot(num_hornacinas=4))
+        assert r.resultado == "PASS"
+
+    def test_fail_distinto(self):
+        r = check_hornacinas(_extr(hornacinas=4), _ot(num_hornacinas=3))
+        assert r.resultado == "FAIL"
+        assert "Hornacinas" in r.detalle
+        assert "4" in r.detalle and "3" in r.detalle
+
+    def test_fail_extraccion_si_ot_no(self):
+        r = check_hornacinas(_extr(hornacinas=2), _ot())
+        assert r.resultado == "FAIL"
+
+
+# ---------------------------------------------------------------------------
+# C-83: mueble de nevera (FAIL bloqueante)
+# ---------------------------------------------------------------------------
+
+class TestC83:
+
+    def test_pass_ambos_sin_nevera(self):
+        r = check_mueble_nevera(_extr(), _ot())
+        assert r.resultado == "PASS"
+        assert r.bloquea
+
+    def test_pass_ambos_con_nevera(self):
+        r = check_mueble_nevera(_extr(mueble_nevera=1), _ot(tiene_mueble_nevera=True))
+        assert r.resultado == "PASS"
+
+    def test_pass_extraccion_2_ot_si(self):
+        """OT solo declara presencia (binaria); EXTRACCION con 2 también pasa."""
+        r = check_mueble_nevera(_extr(mueble_nevera=2), _ot(tiene_mueble_nevera=True))
+        assert r.resultado == "PASS"
+
+    def test_fail_extraccion_si_ot_no(self):
+        r = check_mueble_nevera(_extr(mueble_nevera=1), _ot())
+        assert r.resultado == "FAIL"
+        assert "Mueble de nevera" in r.detalle
+
+    def test_fail_extraccion_no_ot_si(self):
+        r = check_mueble_nevera(_extr(), _ot(tiene_mueble_nevera=True))
+        assert r.resultado == "FAIL"
