@@ -323,3 +323,69 @@ class TestGestor:
         )
         body = servicio.files().update.call_args.kwargs["body"]
         assert body["name"] == "[OK - MANUAL] EU-X"
+
+
+# ===========================================================================
+# subir_informe_txt
+# ===========================================================================
+
+class TestSubirInformeTxt:
+    """La función debe actualizar en sitio (mismo fileId) si el informe ya
+    existe — clave para que Drive Sync propague cambios rápidamente a G:\\."""
+
+    def test_crea_archivo_si_no_existe(self):
+        """PASS: carpeta vacía → files.create() con el nombre y contenido dados."""
+        servicio = _hacer_servicio_mock([{"files": []}])
+        servicio.files.return_value.create.return_value.execute.return_value = {
+            "id": "new_id", "name": "informe_X.txt", "webViewLink": "url"
+        }
+        res = gestor.subir_informe_txt(servicio, "folder1", "informe_X.txt", "hola")
+        assert res["id"] == "new_id"
+        servicio.files().create.assert_called_once()
+        servicio.files().update.assert_not_called()
+        servicio.files().delete.assert_not_called()
+
+    def test_actualiza_archivo_si_ya_existe(self):
+        """PASS: archivo previo → files.update() preservando fileId. NO se
+        llama a create ni delete. Crítico para que Drive Sync no vea
+        borrado+creación y propague rápido a G:\\."""
+        servicio = _hacer_servicio_mock([{"files": [{"id": "fid_viejo"}]}])
+        servicio.files.return_value.update.return_value.execute.return_value = {
+            "id": "fid_viejo", "name": "informe_X.txt", "webViewLink": "url"
+        }
+        res = gestor.subir_informe_txt(servicio, "folder1", "informe_X.txt", "nuevo")
+        assert res["id"] == "fid_viejo"
+        servicio.files().update.assert_called_once()
+        assert servicio.files().update.call_args.kwargs["fileId"] == "fid_viejo"
+        servicio.files().create.assert_not_called()
+        servicio.files().delete.assert_not_called()
+
+    def test_duplicados_previos_se_limpian(self):
+        """PASS: si existen duplicados (de versiones antiguas buggy), se
+        actualiza el primero y se borran los demás."""
+        servicio = _hacer_servicio_mock([{"files": [
+            {"id": "fid_a"}, {"id": "fid_b"}, {"id": "fid_c"}
+        ]}])
+        servicio.files.return_value.update.return_value.execute.return_value = {
+            "id": "fid_a", "name": "informe_X.txt", "webViewLink": "url"
+        }
+        gestor.subir_informe_txt(servicio, "folder1", "informe_X.txt", "nuevo")
+        assert servicio.files().update.call_args.kwargs["fileId"] == "fid_a"
+        # fid_b y fid_c se borran
+        delete_ids = [c.kwargs["fileId"] for c in servicio.files().delete.call_args_list]
+        assert sorted(delete_ids) == ["fid_b", "fid_c"]
+
+    def test_apostrofo_en_nombre_no_rompe_query(self):
+        """FAIL semántico previo: nombres con apóstrofo rompían el query
+        `name='X'` (Drive trata `'` como delimitador) y dejaban duplicados.
+        Ahora el apóstrofo se escapa correctamente."""
+        servicio = _hacer_servicio_mock([{"files": []}])
+        servicio.files.return_value.create.return_value.execute.return_value = {
+            "id": "n", "name": "x", "webViewLink": "u"
+        }
+        gestor.subir_informe_txt(
+            servicio, "folder1", "informe_O'Brien.txt", "contenido"
+        )
+        q = servicio.files().list.call_args.kwargs["q"]
+        # El apóstrofo del nombre debe aparecer escapado dentro del query
+        assert r"O\'Brien" in q

@@ -97,8 +97,14 @@ def subir_informe_txt(
     """
     Sube (o sobreescribe) un archivo .txt en la carpeta de Drive indicada.
 
-    Si ya existe un archivo con el mismo nombre en la carpeta, lo elimina
-    primero para evitar duplicados.
+    Si ya existe un archivo con el mismo nombre, se ACTUALIZA en sitio
+    (mismo fileId) en lugar de borrar+crear. Esto es crítico para los
+    clientes de Drive Sync: ven un cambio de contenido en lugar de un
+    borrado+creación, lo que evita esperas largas para ver la versión
+    nueva en G:\\ y enlaces colgados al fileId viejo.
+
+    Si por una versión previa hubiera duplicados con el mismo nombre,
+    se actualiza el primero y se eliminan los demás.
 
     Args:
         servicio:       cliente Drive v3.
@@ -107,29 +113,41 @@ def subir_informe_txt(
         contenido:      texto a guardar (UTF-8).
 
     Returns:
-        Metadata del archivo creado: {id, name, webViewLink}.
+        Metadata del archivo: {id, name, webViewLink}.
     """
-    # Eliminar versión anterior si existe
+    # En el query `q=name='X'`, el apóstrofo debe escaparse como `\'`.
+    nombre_q = nombre_archivo.replace("\\", "\\\\").replace("'", "\\'")
     existentes = servicio.files().list(
         q=(
             f"'{folder_id}' in parents "
-            f"and name = '{nombre_archivo}' "
+            f"and name = '{nombre_q}' "
             f"and trashed = false"
         ),
         fields="files(id)",
         supportsAllDrives=True,
         includeItemsFromAllDrives=True,
     ).execute(num_retries=2).get("files", [])
-    for f in existentes:
-        servicio.files().delete(
-            fileId=f["id"], supportsAllDrives=True
-        ).execute(num_retries=2)
 
     media = MediaIoBaseUpload(
         io.BytesIO(contenido.encode("utf-8")),
         mimetype="text/plain",
         resumable=False,
     )
+
+    if existentes:
+        # Borrar duplicados (manteniendo el primero) — saneo de versiones previas.
+        for f in existentes[1:]:
+            servicio.files().delete(
+                fileId=f["id"], supportsAllDrives=True
+            ).execute(num_retries=2)
+        # Actualizar contenido del archivo existente (preserva fileId).
+        return servicio.files().update(
+            fileId=existentes[0]["id"],
+            media_body=media,
+            fields="id, name, webViewLink",
+            supportsAllDrives=True,
+        ).execute(num_retries=2)
+
     return servicio.files().create(
         body={"name": nombre_archivo, "parents": [folder_id]},
         media_body=media,
