@@ -837,6 +837,22 @@ class TestLeerOT:
         assert ot.tableros.get("PLY_LAM_Pale") == 3
         assert ot.tableros.get("MDF_LAC_Blanco") == 2
 
+    def test_extrae_tableros_acabado_con_guion_minuscula(self):
+        """SP-22671: 'Rosa-baby' debe extraerse tal cual, sin .title() (que lo
+        rompería a 'Rosa-Baby' y haría mismatch con naming_extraccion.csv)."""
+        texto = (
+            "SP-22671\n"
+            "INFORMACION DE CORTE\n"
+            "Tablero base PLY MDF\n"
+            "Gama Laminado Laca\n"
+            "Acabado Rosa-baby Celeste\n"
+            "# Tableros 1 1\n"
+        )
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.tableros.get("PLY_LAM_Rosa-baby") == 1
+        assert "PLY_LAM_Rosa-Baby" not in ot.tableros
+
     def test_extrae_observaciones_cnc(self):
         """PASS: bloque bajo 'Observaciones CNC' capturado por líneas."""
         texto = (

@@ -239,7 +239,9 @@ def _parsear_tabla_corte(texto: str) -> tuple[dict[str, int], list[str]]:
     tableros: dict[str, int] = {}
     sin_cantidad: list[str] = []
     for i in range(n_cols):
-        clave = f"{materiales[i]}_{gamas[i]}_{acabados_tokens[i].title()}"
+        # No usar .title(): rompe acabados con guión ("Rosa-baby" → "Rosa-Baby"),
+        # generando mismatch con la decodificación de naming_extraccion.csv (C-74).
+        clave = f"{materiales[i]}_{gamas[i]}_{acabados_tokens[i]}"
         num_tok = nums_raw[i] if i < len(nums_raw) else ""
         if num_tok.isdigit():
             tableros[clave] = tableros.get(clave, 0) + int(num_tok)

@@ -231,7 +231,10 @@ def check_tableros_codificados(
         return _skip("C-74", desc, "OT no declara tabla INFORMACION DE CORTE", _GRUPO)
 
     errores: list[str] = []
-    cods_decodificados: dict[str, int] = {}
+    # Mapas indexados por clave normalizada (lower) → (clave_original, cantidad).
+    # La normalización evita falsos FAIL por casing irregular en acabados con
+    # guión (p.ej. OT "Rosa-Baby" vs naming "Rosa-baby").
+    cods_decodificados: dict[str, tuple[str, int]] = {}
     for cod_tab, cantidad in extr.tableros_codificados.items():
         if cantidad == 0:
             continue
@@ -239,11 +242,15 @@ def check_tableros_codificados(
         if clave_canonica is None:
             errores.append(f"Código '{cod_tab}' no se reconoce en naming_extraccion.csv")
             continue
-        cods_decodificados[clave_canonica] = (
-            cods_decodificados.get(clave_canonica, 0) + cantidad
-        )
+        k = clave_canonica.lower()
+        prev = cods_decodificados.get(k)
+        cods_decodificados[k] = (clave_canonica, (prev[1] if prev else 0) + cantidad)
 
-    ot_tableros = {k: v for k, v in ot.tableros.items() if v > 0}
+    ot_tableros: dict[str, tuple[str, int]] = {}
+    for clave, cantidad in ot.tableros.items():
+        if cantidad <= 0:
+            continue
+        ot_tableros[clave.lower()] = (clave, cantidad)
 
     if not cods_decodificados and not ot_tableros:
         return _skip(
@@ -253,20 +260,20 @@ def check_tableros_codificados(
         )
 
     # Lado EXTRACCION → OT: cada combinación del EXTRACCION debe estar en OT
-    for clave, cantidad in cods_decodificados.items():
-        en_ot = ot_tableros.get(clave, 0)
-        if en_ot == 0:
+    for k, (clave, cantidad) in cods_decodificados.items():
+        en_ot = ot_tableros.get(k)
+        if en_ot is None:
             errores.append(
                 f"OT no declara la combinación '{clave}' (EXTRACCION dice {cantidad})"
             )
-        elif en_ot != cantidad:
+        elif en_ot[1] != cantidad:
             errores.append(
-                f"Combinación '{clave}': EXTRACCION {cantidad} ≠ OT {en_ot}"
+                f"Combinación '{clave}': EXTRACCION {cantidad} ≠ OT {en_ot[1]}"
             )
 
     # Lado OT → EXTRACCION
-    for clave, cantidad in ot_tableros.items():
-        if clave not in cods_decodificados:
+    for k, (clave, cantidad) in ot_tableros.items():
+        if k not in cods_decodificados:
             errores.append(
                 f"EXTRACCION no declara la combinación '{clave}' (OT dice {cantidad})"
             )
