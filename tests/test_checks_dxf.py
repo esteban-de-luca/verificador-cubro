@@ -575,15 +575,21 @@ class TestC40:
         r = check_ventilacion_rejilla(dxfs, ot, reglas)
         assert r.resultado == "PASS"
 
+    def test_pass_sin_rejilla_y_ot_cero(self, reglas):
+        dxfs = [_dxf(layers={"CONTROL", "0_ANOTACIONES"})]
+        r = check_ventilacion_rejilla(dxfs, _ot(num_ventilacion=0), reglas)
+        assert r.resultado == "PASS"
+
     def test_fail_rejilla_ausente(self, reglas):
         dxfs = [_dxf(layers={"CONTROL", "0_ANOTACIONES"})]
         ot = _ot(num_ventilacion=3)
         r = check_ventilacion_rejilla(dxfs, ot, reglas)
         assert r.resultado == "FAIL"
 
-    def test_skip_ot_sin_ventilacion(self, reglas):
-        r = check_ventilacion_rejilla([_dxf()], _ot(num_ventilacion=0), reglas)
-        assert r.resultado == "SKIP"
+    def test_fail_layer_sin_declaracion_ot(self, reglas):
+        dxfs = [_dxf(layers={"CONTROL", "8-REJILLA"})]
+        r = check_ventilacion_rejilla(dxfs, _ot(num_ventilacion=0), reglas)
+        assert r.resultado == "FAIL"
 
     def test_skip_sin_dxfs(self, reglas):
         r = check_ventilacion_rejilla([], _ot(num_ventilacion=2), reglas)

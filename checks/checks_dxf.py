@@ -391,23 +391,23 @@ def check_ventilacion_rejilla(
     s = _si_no_dxfs("C-40", "Recuento REJILLA == ventilación OT", dxfs)
     if s:
         return s
-    if ot.num_ventilacion == 0:
-        return _skip("C-40", "Recuento REJILLA == ventilación OT",
-                     "OT sin ventilación declarada", _GRUPO)
 
     layer_vent: str = reglas["layers"]["ventilacion"]
     hay_rejilla = any(layer_vent in dxf.layers for dxf in dxfs)
     ot_declara = ot.num_ventilacion > 0
 
-    if hay_rejilla and ot_declara:
-        return _pass("C-40", "Recuento REJILLA == ventilación OT", True, _GRUPO)
+    if hay_rejilla and not ot_declara:
+        return _fail(
+            "C-40", "Recuento REJILLA == ventilación OT",
+            f"Layer '{layer_vent}' presente en DXFs pero OT declara 0 rejillas",
+            True, _GRUPO,
+        )
     if not hay_rejilla and ot_declara:
         return _fail(
             "C-40", "Recuento REJILLA == ventilación OT",
             f"OT declara {ot.num_ventilacion} rejilla(s) pero layer '{layer_vent}' ausente en DXFs",
             True, _GRUPO,
         )
-    # hay_rejilla=True, ot_declara=False — no puede ocurrir aquí (skip arriba)
     return _pass("C-40", "Recuento REJILLA == ventilación OT", True, _GRUPO)
 
 
