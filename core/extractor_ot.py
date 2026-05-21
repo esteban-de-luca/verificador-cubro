@@ -94,9 +94,9 @@ _RE_VENTILACION = re.compile(
 _RE_HORNACINA = re.compile(
     r"colgador\s+de\s+hornacina[:\s]+(s[ií]|no|\d+)", re.IGNORECASE
 )
-# "Tensores: No"  /  "Sí"
+# "Tensores: 1 uds." / "Tensores: 0" / legacy "Tensores: Sí/No"
 _RE_TENSORES = re.compile(
-    r"tensores[:\s]+(s[ií]|no)", re.IGNORECASE
+    r"tensores[:\s]+(s[ií]|no|\d+)", re.IGNORECASE
 )
 # "Nº de OT 5074" o "No de OT: 5074"
 _RE_NUM_OT = re.compile(
@@ -343,10 +343,16 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
     else:
         colgadores_hornacina = None
 
-    # Tensores — "Tensores: No/Sí"
+    # Tensores — "Tensores: N uds." / "Tensores: 0" / legacy "Tensores: Sí/No"
     m_ten = _RE_TENSORES.search(texto)
     if m_ten:
-        tiene_tensores: bool | None = m_ten.group(1).lower().startswith("s")
+        val = m_ten.group(1).lower()
+        if val.isdigit():
+            tiene_tensores: bool | None = int(val) > 0
+        elif val == "no":
+            tiene_tensores = False
+        else:
+            tiene_tensores = True
     else:
         tiene_tensores = None
 

@@ -947,6 +947,41 @@ class TestLeerOT:
             ot = leer_ot(io.BytesIO(b"x"))
         assert ot.tiene_mueble_nevera is False
 
+    def test_tensores_formato_numerico_con_uds(self):
+        """C1-18959: 'Tensores: 1 uds.' → tiene_tensores=True."""
+        texto = "C1-18959\nOtros elementos:\nTensores: 1 uds.\n"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.tiene_tensores is True
+
+    def test_tensores_formato_numerico_cero(self):
+        """'Tensores: 0 uds.' → tiene_tensores=False."""
+        texto = "EU-99999\nTensores: 0 uds.\n"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.tiene_tensores is False
+
+    def test_tensores_legacy_si(self):
+        """Legacy: 'Tensores: Sí' → tiene_tensores=True."""
+        texto = "EU-99999\nTensores: Sí\n"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.tiene_tensores is True
+
+    def test_tensores_legacy_no(self):
+        """Legacy: 'Tensores: No' → tiene_tensores=False."""
+        texto = "EU-99999\nTensores: No\n"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.tiene_tensores is False
+
+    def test_tensores_ausente_es_none(self):
+        """Sin campo Tensores → tiene_tensores=None (SKIP downstream)."""
+        texto = "EU-99999\nOtros elementos:\n"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.tiene_tensores is None
+
 
 # ===========================================================================
 # leer_codigo_destino — PDF DESTINO CAJA
