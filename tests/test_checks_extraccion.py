@@ -472,6 +472,17 @@ class TestC74:
         assert r.resultado == "FAIL"
         assert "EXTRACCION no declara" in r.detalle
 
+    def test_pass_case_insensitive(self, naming):
+        """Defensa en profundidad: si la OT viniera con casing irregular
+        ('Rosa-Baby' vs naming 'Rosa-baby'), la comparación case-insensitive
+        evita el falso FAIL."""
+        r = check_tableros_codificados(
+            _extr(tableros_codificados={"HPL_Rsa_tab": 1}),
+            _ot(tableros={"PLY_LAM_Rosa-Baby": 1}),
+            naming,
+        )
+        assert r.resultado == "PASS"
+
 
 # ---------------------------------------------------------------------------
 # C-75: prioridad INC
