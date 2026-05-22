@@ -296,6 +296,17 @@ bisagra_distancia:
       descripcion: "Puerta custom con 4 bisagras (2x2) — herrajes especiales"
 
 # -----------------------------------------------------------------------------
+# TIPOS DE GEOMETRÍA PROHIBIDOS (Check C-46)
+# Rhino debe exportar curvas como POLYLINE / LWPOLYLINE / LINE / ARC / CIRCLE.
+# Las SPLINEs son curvas paramétricas que el postprocesador CNC no interpreta
+# de forma fiable y, cuando aparecen en 0_ANOTACIONES, indican que el texto se
+# explotó a curvas — rompe los checks que dependen de leer los IDs de pieza.
+# -----------------------------------------------------------------------------
+tipos_geometria:
+  prohibidos:
+    - SPLINE
+
+# -----------------------------------------------------------------------------
 # NESTING LACA (Check C-45)
 # Disposición geométrica de las piezas LAC en el nesting:
 # - Si el proyecto contiene CUALQUIER acabado LAC no estándar (Marga, Agave,
