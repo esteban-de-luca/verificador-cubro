@@ -806,6 +806,53 @@ def _vecino_directo(
     return mejor, mejor_gap
 
 
+# ---------------------------------------------------------------------------
+# C-46: Tipos de geometría prohibidos en los DXFs (SPLINE, …)
+# ---------------------------------------------------------------------------
+# Rhino debe exportar curvas como POLYLINE / LWPOLYLINE / LINE / ARC / CIRCLE.
+# Las SPLINEs son curvas paramétricas que el postprocesador CNC no interpreta
+# de forma fiable (cada control las interpola con resoluciones distintas) y
+# además rompen los checks de anotaciones cuando el texto se explota a curvas
+# (los IDs de pieza dejan de ser legibles).
+# ---------------------------------------------------------------------------
+
+def check_geometria_prohibida(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
+    """C-46: Ningún DXF debe contener tipos de geometría prohibidos. Bloquea: Sí.
+
+    Lee `tipos_geometria.prohibidos` de reglas.yaml (por defecto: SPLINE) y
+    reporta cada (tablero, layer, tipo) donde aparezcan, con el conteo.
+    """
+    ID = "C-46"
+    DESC = "Tipos de geometría prohibidos ausentes en DXFs"
+    s = _si_no_dxfs(ID, DESC, dxfs)
+    if s:
+        return s
+
+    cfg = reglas.get("tipos_geometria") or {}
+    prohibidos = {t.upper() for t in (cfg.get("prohibidos") or [])}
+    if not prohibidos:
+        return _skip(ID, DESC, "Sin tipos de geometría prohibidos en reglas.yaml", _GRUPO)
+
+    errores: list[str] = []
+    for dxf in dxfs:
+        # Agrega por tipo: {tipo: [(layer, n), ...]}
+        hallazgos: dict[str, list[tuple[str, int]]] = {}
+        for layer, por_tipo in dxf.conteos_tipo_por_layer.items():
+            for tipo, n in por_tipo.items():
+                if tipo.upper() in prohibidos and n > 0:
+                    hallazgos.setdefault(tipo.upper(), []).append((layer, n))
+        for tipo, items in hallazgos.items():
+            total = sum(n for _, n in items)
+            top = sorted(items, key=lambda t: -t[1])[:3]
+            detalle_layers = ", ".join(f"{lay} ({n})" for lay, n in top)
+            extra = f" (+{len(items) - 3} layers más)" if len(items) > 3 else ""
+            errores.append(
+                f"{dxf.nombre}: {total} entidad(es) {tipo} prohibida(s) "
+                f"en {detalle_layers}{extra}"
+            )
+    return _resultado(ID, DESC, errores, True, _GRUPO)
+
+
 def check_nesting_laca(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     """C-45: Disposición de piezas LAC en el nesting según régimen del proyecto.
 

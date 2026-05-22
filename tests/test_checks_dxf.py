@@ -27,6 +27,7 @@ from checks.checks_dxf import (
     check_layers_desuso,
     check_distancia_bisagras,
     check_nesting_laca,
+    check_geometria_prohibida,
 )
 
 
@@ -1188,3 +1189,75 @@ class TestC45:
         r = check_nesting_laca([dxf], reglas)
         assert r.resultado == "FAIL"
         assert "15" in r.detalle
+
+
+# ---------------------------------------------------------------------------
+# C-46: Tipos de geometría prohibidos (SPLINE)
+# ---------------------------------------------------------------------------
+
+def _dxf_con_tipos(conteos_tipo_por_layer, nombre="EU-22780_X_PLY_LAMINADO_FES_T1.dxf"):
+    """DXF mínimo con un mapeo {layer: {tipo: n}} para C-46."""
+    layers = set(conteos_tipo_por_layer.keys())
+    return DXFDoc(
+        nombre=nombre, tablero_num=1, material="PLY", gama="LAM", acabado="Fes",
+        layers=layers,
+        layers_con_geometria=layers,
+        conteos_layer={},
+        conteos_tipo_por_layer=conteos_tipo_por_layer,
+    )
+
+
+class TestC46:
+
+    def test_pass_sin_splines(self, reglas):
+        dxfs = [_dxf_con_tipos({
+            "10_12-CUTEXT-EM5-Z18": {"LWPOLYLINE": 12, "CIRCLE": 6},
+            "0_ANOTACIONES": {"TEXT": 50, "MTEXT": 3},
+        })]
+        r = check_geometria_prohibida(dxfs, reglas)
+        assert r.resultado == "PASS"
+
+    def test_fail_con_splines(self, reglas):
+        dxfs = [_dxf_con_tipos({
+            "0_ANOTACIONES": {"SPLINE": 1584, "POLYLINE": 1},
+            "10_12-CUTEXT-EM5-Z18": {"SPLINE": 4, "POLYLINE": 1},
+            "4-DES1_IN-EM5-Z3_7_ROBLE": {"CIRCLE": 3},
+        })]
+        r = check_geometria_prohibida(dxfs, reglas)
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "SPLINE" in r.detalle
+        # El layer con más splines debe aparecer destacado en el detalle
+        assert "0_ANOTACIONES" in r.detalle
+
+    def test_fail_reporta_total_por_tablero(self, reglas):
+        # 2 tableros: uno limpio, otro con splines → solo el segundo en el detalle
+        dxfs = [
+            _dxf_con_tipos(
+                {"10_12-CUTEXT-EM5-Z18": {"LWPOLYLINE": 5}},
+                nombre="EU-22780_X_PLY_LAMINADO_FES_T1.dxf",
+            ),
+            _dxf_con_tipos(
+                {"7-POCKET-EM5-Z14": {"SPLINE": 10}},
+                nombre="EU-22780_X_PLY_LAMINADO_FES_T2.dxf",
+            ),
+        ]
+        r = check_geometria_prohibida(dxfs, reglas)
+        assert r.resultado == "FAIL"
+        assert "T2.dxf" in r.detalle
+        assert "T1.dxf" not in r.detalle
+
+    def test_skip_sin_dxfs(self, reglas):
+        r = check_geometria_prohibida([], reglas)
+        assert r.resultado == "SKIP"
+
+    def test_skip_sin_lista_prohibidos(self):
+        # reglas sin la sección tipos_geometria → SKIP (no PASS silencioso)
+        dxfs = [_dxf_con_tipos({"X": {"SPLINE": 1}})]
+        r = check_geometria_prohibida(dxfs, {})
+        assert r.resultado == "SKIP"
+
+    def test_id_check(self, reglas):
+        r = check_geometria_prohibida([], reglas)
+        assert r.id == "C-46"
+        assert r.grupo == "DXF"

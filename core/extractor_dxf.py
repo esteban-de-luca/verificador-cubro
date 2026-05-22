@@ -273,26 +273,32 @@ def _parsear_entities_raw(contenido: str) -> list[dict]:
 
 def _extraer_layers_y_conteos(
     entidades: list[dict],
-) -> tuple[set[str], set[str], dict[str, int]]:
+) -> tuple[set[str], set[str], dict[str, int], dict[str, dict[str, int]]]:
     """
     A partir de la lista de entidades raw devuelve:
       - layers: layers con al menos una entidad
       - layers_con_geometria: layers con al menos una entidad de geometría operativa
       - conteos_layer: {layer: nº entidades de geometría}
+      - conteos_tipo_por_layer: {layer: {tipo: nº entidades}} (todos los tipos,
+        no solo los de geometría operativa — necesario para C-46 que valida
+        tipos de geometría prohibidos como SPLINE).
     """
     layers: set[str] = set()
     layers_con_geometria: set[str] = set()
     conteos_layer: dict[str, int] = {}
+    conteos_tipo_por_layer: dict[str, dict[str, int]] = {}
 
     for ent in entidades:
         tipo = ent["tipo"]
         layer = ent["layer"]
         layers.add(layer)
+        por_tipo = conteos_tipo_por_layer.setdefault(layer, {})
+        por_tipo[tipo] = por_tipo.get(tipo, 0) + 1
         if tipo in _TIPOS_GEOMETRIA:
             layers_con_geometria.add(layer)
             conteos_layer[layer] = conteos_layer.get(layer, 0) + 1
 
-    return layers, layers_con_geometria, conteos_layer
+    return layers, layers_con_geometria, conteos_layer, conteos_tipo_por_layer
 
 
 def _aplicar_extrusion_wcs(x: float, y: float, extrusion_z: float) -> tuple[float, float]:
@@ -425,7 +431,9 @@ def leer_dxf(origen: BinaryIO | Path | str, nombre: str | None = None) -> DXFDoc
 
     material, gama, acabado, num = _parsear_nombre(nombre)
     entidades = _parsear_entities_raw(contenido)
-    layers, layers_con_geometria, conteos_layer = _extraer_layers_y_conteos(entidades)
+    layers, layers_con_geometria, conteos_layer, conteos_tipo_por_layer = (
+        _extraer_layers_y_conteos(entidades)
+    )
     ids_piezas = _extraer_ids_piezas(entidades)
     circulos = _extraer_circulos(entidades)
     piezas_contorno = _extraer_contornos_pieza(entidades)
@@ -442,6 +450,7 @@ def leer_dxf(origen: BinaryIO | Path | str, nombre: str | None = None) -> DXFDoc
         ids_piezas=ids_piezas,
         circulos=circulos,
         piezas_contorno=piezas_contorno,
+        conteos_tipo_por_layer=conteos_tipo_por_layer,
     )
 
 

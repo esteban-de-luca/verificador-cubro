@@ -185,6 +185,10 @@ class DXFDoc:
     #:             'ymin': float, 'ymax': float}.
     piezas_contorno: list[dict] = field(default_factory=list)
 
+    #: Conteo de entidades por (layer, tipo). Estructura: {layer: {tipo: n}}.
+    #: Usado por C-46 para detectar tipos de geometría prohibidos (p.ej. SPLINE).
+    conteos_tipo_por_layer: dict[str, dict[str, int]] = field(default_factory=dict)
+
     @property
     def clave_material(self) -> str:
         return f"{self.material}_{self.gama}_{self.acabado}"
