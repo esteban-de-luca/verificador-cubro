@@ -536,29 +536,31 @@ def _panel_accion(proyecto: dict, informe: InformeFinal) -> None:
                 f"El resultado real de la verificación sigue siendo {estado_informe}.",
                 icon="✅",
             )
-        elif estado_drive == estado_informe:
-            st.success(
-                f"La carpeta ya tiene el estado [{estado_informe}].",
-                icon="✅",
-            )
         else:
-            _color_btn = _COLOR[estado_informe]
-            st.markdown(
-                f'<p style="color:{_color_btn};font-weight:600;">'
-                f'{_ICONO[estado_informe]} Resultado: {estado_informe}</p>',
-                unsafe_allow_html=True,
-            )
-            if st.button(
-                f"Aplicar [{estado_informe}] en Drive",
-                type="primary",
-                use_container_width=True,
-            ):
-                _modal_aplicar_estado(
-                    folder_id, nombre_actual, nombre_limpio, estado_informe
+            if estado_drive == estado_informe:
+                st.success(
+                    f"La carpeta ya tiene el estado [{estado_informe}].",
+                    icon="✅",
                 )
+            else:
+                _color_btn = _COLOR[estado_informe]
+                st.markdown(
+                    f'<p style="color:{_color_btn};font-weight:600;">'
+                    f'{_ICONO[estado_informe]} Resultado: {estado_informe}</p>',
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    f"Aplicar [{estado_informe}] en Drive",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    _modal_aplicar_estado(
+                        folder_id, nombre_actual, nombre_limpio, estado_informe
+                    )
 
-            # Override manual: solo disponible cuando el informe es BLOQUEADO o
-            # ADVERTENCIAS y la carpeta aún no ha sido marcada como OK_MANUAL.
+            # Override manual: disponible siempre que el informe sea BLOQUEADO o
+            # ADVERTENCIAS, incluso si la carpeta ya tiene ese estado aplicado en
+            # Drive. Permite desbloquear y aprobar manualmente tras una revisión.
             if estado_informe in ("BLOQUEADO", "ADVERTENCIAS"):
                 st.markdown(
                     '<p style="color:#757575;font-size:0.85em;margin-top:8px;'
