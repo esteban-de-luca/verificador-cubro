@@ -226,7 +226,24 @@ def check_tableros_codificados(
     desc = "Tableros <COD>_tab decodificados ↔ tabla CORTE OT"
 
     if not extr.tableros_codificados:
-        return _skip("C-74", desc, "EXTRACCION no declara claves <COD>_tab", _GRUPO)
+        # Decisión de negocio: la EXTRACCION debe declarar SIEMPRE las
+        # combinaciones <COD>_tab presentes en la tabla CORTE de la OT, también
+        # en proyectos cortados de retal (donde se declaran con cantidad 0). No
+        # declarar ninguna clave es un FAIL bloqueante. Solo se exime cuando la
+        # OT tampoco declara ninguna combinación (no hay nada con qué comparar).
+        if not ot.tableros:
+            return _skip(
+                "C-74", desc,
+                "Ni EXTRACCION ni OT declaran tableros (nada que comparar)",
+                _GRUPO,
+            )
+        materiales_ot = ", ".join(sorted(ot.tableros))
+        return _fail(
+            "C-74", desc,
+            f"EXTRACCION no declara ninguna clave <COD>_tab, pero la OT sí "
+            f"declara tableros en INFORMACION DE CORTE: {materiales_ot}",
+            True, _GRUPO,
+        )
     if not ot.tableros:
         return _skip("C-74", desc, "OT no declara tabla INFORMACION DE CORTE", _GRUPO)
 

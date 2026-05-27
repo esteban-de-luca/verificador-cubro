@@ -414,8 +414,30 @@ class TestC74:
         assert r.resultado == "FAIL"
         assert "no se reconoce" in r.detalle.lower()
 
-    def test_skip_sin_codigos(self, naming):
+    def test_fail_sin_codigos_pero_ot_con_tableros(self, naming):
+        """EXTRACCION no declara ninguna clave <COD>_tab pero la OT sí declara
+        tableros → FAIL: la EXTRACCION debe declarar siempre los materiales."""
         r = check_tableros_codificados(_extr(tableros_codificados={}), _ot(), naming)
+        assert r.resultado == "FAIL"
+        assert "no declara" in r.detalle.lower()
+
+    def test_fail_sin_codigos_aunque_ot_declare_cero(self, naming):
+        """Caso EU-21993-INC3 (retal): OT declara la combinación con # Tableros 0
+        y la EXTRACCION no declara ninguna clave <COD>_tab → FAIL.
+        El retal solo se exime si la EXTRACCION declara la clave con 0."""
+        r = check_tableros_codificados(
+            _extr(tableros_codificados={}),
+            _ot(tableros={"PLY_LIN_Pistacho": 0}),
+            naming,
+        )
+        assert r.resultado == "FAIL"
+        assert "PLY_LIN_Pistacho" in r.detalle
+
+    def test_skip_sin_codigos_y_ot_sin_tabla(self, naming):
+        """Ni EXTRACCION ni OT declaran tableros → no hay nada que comparar → SKIP."""
+        r = check_tableros_codificados(
+            _extr(tableros_codificados={}), _ot(tableros={}), naming
+        )
         assert r.resultado == "SKIP"
 
     def test_skip_ot_sin_tabla(self, naming):
