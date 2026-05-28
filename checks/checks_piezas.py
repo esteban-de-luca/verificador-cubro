@@ -7,6 +7,7 @@ Todos los checks reciben las reglas como parámetro — nunca leen YAML directam
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import TYPE_CHECKING
 
 from core.modelos import CheckResult, OTData, Pieza
@@ -20,9 +21,13 @@ _GRUPO_TIRA = "Tiradores"
 
 
 def _norm_acabado(s: str) -> str:
-    """Normaliza acabados: lowercase y colapsa guiones/espacios.
-    'Marble-Green' == 'Marble Green' == 'marble  green' → 'marble green'."""
-    return re.sub(r"[\s\-]+", " ", s.strip().lower())
+    """Normaliza acabados: lowercase, sin acentos y colapsa guiones/espacios.
+    'Marble-Green' == 'Marble Green' == 'marble  green' → 'marble green'.
+    'Cadaqués' == 'Cadaques' → 'cadaques' (los humanos omiten tildes en OT/DESPIECE)."""
+    sin_acentos = "".join(
+        c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)
+    )
+    return re.sub(r"[\s\-]+", " ", sin_acentos.strip().lower())
 
 # ---------------------------------------------------------------------------
 # C-10: Nº total de piezas igual en OT, DESPIECE y ETIQUETAS

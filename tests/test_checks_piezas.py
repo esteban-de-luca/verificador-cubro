@@ -206,6 +206,11 @@ class TestC16:
         piezas = [_p(mat="PLY", gama="LAM", acabado="Marble-green")]
         assert check_acabados(piezas, r).resultado == "PASS"
 
+    def test_pass_normaliza_acentos(self, r):
+        # Reglas declaran 'Cadaqués'; despiece a veces trae 'Cadaques' sin tilde.
+        piezas = [_p(mat="PLY", gama="LAM", acabado="Cadaques")]
+        assert check_acabados(piezas, r).resultado == "PASS"
+
 
 # ===========================================================================
 # C-17

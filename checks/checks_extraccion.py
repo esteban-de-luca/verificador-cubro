@@ -20,11 +20,22 @@ Parámetros comunes:
 
 from __future__ import annotations
 
+import unicodedata
+
 from core.modelos import CheckResult, ExtraccionData, OTData, Pieza
 from core.extractor_extraccion import cod_tab_a_clave_canonica
 from checks._helpers import _pass, _fail, _warn, _skip, _resultado
 
 _GRUPO = "Extraccion"
+
+
+def _clave_norm(s: str) -> str:
+    """Normaliza claves 'MATERIAL_GAMA_Acabado' a lower + sin acentos.
+    'PLY_LAM_Cadaqués' == 'PLY_LAM_Cadaques' (la OT a veces se escribe sin tilde)."""
+    sin_acentos = "".join(
+        c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)
+    )
+    return sin_acentos.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -248,9 +259,10 @@ def check_tableros_codificados(
         return _skip("C-74", desc, "OT no declara tabla INFORMACION DE CORTE", _GRUPO)
 
     errores: list[str] = []
-    # Mapas indexados por clave normalizada (lower) → (clave_original, cantidad).
-    # La normalización evita falsos FAIL por casing irregular en acabados con
-    # guión (p.ej. OT "Rosa-Baby" vs naming "Rosa-baby").
+    # Mapas indexados por clave normalizada (lower + sin acentos) → (clave_original, cantidad).
+    # La normalización evita falsos FAIL por:
+    #   - casing irregular en acabados con guión (p.ej. OT "Rosa-Baby" vs naming "Rosa-baby")
+    #   - omisión de tildes en la OT (p.ej. OT "Cadaques" vs naming "Cadaqués")
     cods_decodificados: dict[str, tuple[str, int]] = {}
     for cod_tab, cantidad in extr.tableros_codificados.items():
         if cantidad == 0:
@@ -259,7 +271,7 @@ def check_tableros_codificados(
         if clave_canonica is None:
             errores.append(f"Código '{cod_tab}' no se reconoce en naming_extraccion.csv")
             continue
-        k = clave_canonica.lower()
+        k = _clave_norm(clave_canonica)
         prev = cods_decodificados.get(k)
         cods_decodificados[k] = (clave_canonica, (prev[1] if prev else 0) + cantidad)
 
@@ -267,7 +279,7 @@ def check_tableros_codificados(
     for clave, cantidad in ot.tableros.items():
         if cantidad <= 0:
             continue
-        ot_tableros[clave.lower()] = (clave, cantidad)
+        ot_tableros[_clave_norm(clave)] = (clave, cantidad)
 
     if not cods_decodificados and not ot_tableros:
         return _skip(
