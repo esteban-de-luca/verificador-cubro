@@ -313,7 +313,8 @@ tipos_geometria:
 #   Noche, etc.) → TODAS las piezas LAC del proyecto (incluidos Roto/Crema/
 #   Blanco/Seda) deben ir PEGADAS (gap = 0).
 # - Si todos los acabados LAC del proyecto son estándar (Roto/Crema/Blanco/
-#   Seda) → todas las piezas deben ir SEPARADAS exactamente 15 mm.
+#   Seda) → todas las piezas deben ir SEPARADAS al menos 15 mm. Gaps mayores
+#   son válidos; solo se reporta cuando quedan más cerca de lo permitido.
 # La lista de acabados estándar se reutiliza de
 # layers.corte_perimetral.lac_acabados_estandar.
 # -----------------------------------------------------------------------------
@@ -326,6 +327,8 @@ nesting_laca:
   layer_contorno_no_estandar: "10_12-CONTORNO LACA"
   layer_contorno_estandar: "10_12-CUTEXT-EM5-Z18"
   # Distancia esperada entre piezas vecinas según el régimen del proyecto.
+  # Régimen pegado: exactamente 0 mm (±EPS). Régimen separado: mínimo 15 mm
+  # (gap mayor a 15 mm es válido).
   gap_pegado_mm: 0
   gap_separado_mm: 15
   # Tolerancia para absorber ruido de coma flotante en coordenadas DXF.

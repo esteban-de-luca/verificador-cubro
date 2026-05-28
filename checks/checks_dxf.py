@@ -738,15 +738,16 @@ def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
 
 
 # ---------------------------------------------------------------------------
-# C-45: Disposición de piezas LAC en el nesting (pegadas vs separadas 15 mm)
+# C-45: Disposición de piezas LAC en el nesting (pegadas vs separadas ≥15 mm)
 # ---------------------------------------------------------------------------
 # Regla:
 #   - Si el proyecto contiene CUALQUIER acabado LAC no estándar (Marga, Agave,
 #     Noche, Argil, Zafiro, Negro, Ave, Curry, Celeste, Humo, Tinta, Pino…)
-#     → todas las piezas LAC del proyecto deben ir PEGADAS (gap = 0), incluidos
-#     los DXFs de acabado estándar (Roto/Crema/Blanco/Seda).
+#     → todas las piezas LAC del proyecto deben ir PEGADAS (gap = 0 ± EPS),
+#     incluidos los DXFs de acabado estándar (Roto/Crema/Blanco/Seda).
 #   - Si todos los acabados LAC del proyecto son estándar → todas las piezas
-#     LAC deben ir SEPARADAS exactamente 15 mm.
+#     LAC deben ir SEPARADAS al menos 15 mm (gap ≥ 15 mm − EPS). Distancias
+#     mayores son válidas; solo se reporta si quedan demasiado cerca.
 # Tolerancia (ambos casos): EPS = 0.5 mm para absorber ruido floating-point.
 # ---------------------------------------------------------------------------
 
@@ -859,7 +860,8 @@ def check_nesting_laca(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     Régimen NO ESTÁNDAR (proyecto con ≥1 acabado LAC fuera de la lista estándar):
       → todas las piezas LAC del proyecto pegadas (gap = 0 ± EPS).
     Régimen ESTÁNDAR (todos los acabados LAC del proyecto son estándar):
-      → todas las piezas LAC separadas exactamente 15 mm (± EPS).
+      → todas las piezas LAC separadas ≥ 15 mm (gap ≥ 15 − EPS). Gaps mayores
+      son válidos.
 
     Bloquea: Sí.
     """
@@ -924,7 +926,13 @@ def check_nesting_laca(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
                 if vecino is None:
                     continue
                 algun_par_evaluado = True
-                if abs(gap - gap_esperado) > eps:
+                # Pegado: gap debe ser ≈ 0 (±EPS). Separado: gap ≥ 15 − EPS;
+                # cualquier separación mayor es aceptable.
+                if proyecto_no_estandar:
+                    fallo = abs(gap - gap_esperado) > eps
+                else:
+                    fallo = gap < gap_esperado - eps
+                if fallo:
                     errores.append(
                         _formatear_error(
                             dxf, a, vecino, gap, gap_esperado, eje.upper(),
@@ -965,14 +973,16 @@ def _formatear_error(
             f"Proyecto contiene LAC no estándar ({', '.join(no_std_acabs)}) "
             f"→ todas las piezas LAC deben ir pegadas (gap=0)."
         )
+        esperado_txt = f"{gap_esperado:.0f}mm"
     else:
         motivo = (
             "Proyecto 100% LAC estándar → todas las piezas LAC deben ir "
-            "separadas exactamente 15 mm."
+            "separadas al menos 15 mm."
         )
+        esperado_txt = f"≥{gap_esperado:.0f}mm"
     return (
         f"{dxf.nombre} (LAC {dxf.acabado}): piezas separadas {gap:.1f}mm "
-        f"en eje {eje} (esperado: {gap_esperado:.0f}mm). "
+        f"en eje {eje} (esperado: {esperado_txt}). "
         f"Pieza A {wa:.0f}×{ha:.0f}mm @ ({a['xmin']:.0f},{a['ymin']:.0f}); "
         f"Pieza B {wb:.0f}×{hb:.0f}mm @ ({b['xmin']:.0f},{b['ymin']:.0f}). "
         f"{motivo}"
