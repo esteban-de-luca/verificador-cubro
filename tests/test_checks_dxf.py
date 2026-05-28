@@ -1104,6 +1104,19 @@ class TestC45:
         assert r.resultado == "FAIL"
         assert "15" in r.detalle  # gap esperado
 
+    # --- LAC Seda único, separadas 26 mm (> 15) → PASS ---
+    # Caso EU-20868: el régimen estándar acepta cualquier gap ≥ 15 mm.
+    def test_solo_seda_separadas_mas_de_15_pasa(self, reglas):
+        dxf = _dxf_lac("Seda", _piezas_en_fila(3, gap=26, layer=L_CUTEXT))
+        r = check_nesting_laca([dxf], reglas)
+        assert r.resultado == "PASS"
+
+    # --- LAC Seda único, separadas 17.9 mm en X → PASS (gap > 15) ---
+    def test_solo_seda_gap_ligeramente_mayor_a_15_pasa(self, reglas):
+        dxf = _dxf_lac("Seda", _piezas_en_fila(4, gap=17.9, layer=L_CUTEXT))
+        r = check_nesting_laca([dxf], reglas)
+        assert r.resultado == "PASS"
+
     # --- Ejemplo 5: LAC Roto único, pegadas → FAIL ---
     def test_solo_roto_pegadas_falla(self, reglas):
         dxf = _dxf_lac("Roto", _piezas_en_fila(5, gap=0, layer=L_CUTEXT))
