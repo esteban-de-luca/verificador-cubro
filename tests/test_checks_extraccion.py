@@ -483,6 +483,16 @@ class TestC74:
         )
         assert r.resultado == "PASS"
 
+    def test_pass_normaliza_acentos(self, naming):
+        """naming declara 'Cadaqués' (con tilde); la OT a veces se escribe
+        'Cadaques' sin tilde. La comparación debe ignorar acentos."""
+        r = check_tableros_codificados(
+            _extr(tableros_codificados={"HPL_Cad_tab": 1}),
+            _ot(tableros={"PLY_LAM_Cadaques": 1}),
+            naming,
+        )
+        assert r.resultado == "PASS"
+
 
 # ---------------------------------------------------------------------------
 # C-75: prioridad INC
