@@ -22,7 +22,7 @@ RESULTADOS_VALIDOS = frozenset({"PASS", "FAIL", "WARN", "SKIP"})
 GRUPOS_VALIDOS = frozenset({
     "Inventario", "Piezas", "Material",
     "Mecanizados", "Tiradores", "DXF", "Logistica", "Texto CNC",
-    "Extraccion",
+    "Extraccion", "Externo",
 })
 
 

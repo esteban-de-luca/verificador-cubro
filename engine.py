@@ -108,6 +108,7 @@ from checks.checks_extraccion import (
     check_hornacinas,
     check_mueble_nevera,
 )
+from checks.checks_externos import check_csv_hubspot
 
 log = logging.getLogger(__name__)
 
@@ -278,6 +279,7 @@ def _ejecutar_checks(
     id_proyecto: str,
     reglas: dict,
     reglas_cnc: dict,
+    csv_hubspot_existe: bool | None = None,
 ) -> list[CheckResult]:
     resultados: list[CheckResult] = []
     ot = datos.ot or _ot_vacia(id_proyecto)
@@ -383,6 +385,9 @@ def _ejecutar_checks(
         resultados.append(check_hornacinas(datos.extraccion, ot))
         resultados.append(check_mueble_nevera(datos.extraccion, ot))
 
+    # Externos (C-84+)
+    resultados.append(check_csv_hubspot(id_proyecto, csv_hubspot_existe))
+
     return resultados
 
 
@@ -415,6 +420,8 @@ def verificar_proyecto(
         InformeFinal con todos los CheckResult y el estado global.
     """
     from drive.descargador import descargar_carpeta
+    from drive.navegador import archivo_existe_en_carpeta
+    import config
 
     log.info("Descargando archivos de %s (%s)…", id_proyecto, folder_id)
     archivos = descargar_carpeta(servicio, folder_id)
@@ -433,8 +440,20 @@ def verificar_proyecto(
     for err in datos.errores_extraccion:
         log.warning("Extracción: %s", err)
 
+    # C-84: ¿existe el CSV de exportación a HubSpot? Resolver acá (no en
+    # los checks) para que las pruebas no tengan que mockear Drive.
+    try:
+        csv_hubspot_existe = archivo_existe_en_carpeta(
+            servicio, config.DRIVE_HUBSPOT_EXPORT_ID, f"{id_proyecto}.csv"
+        )
+    except Exception as exc:
+        log.warning("C-84: no se pudo consultar carpeta HubSpot: %s", exc)
+        csv_hubspot_existe = None
+
     cliente = datos.ot.cliente if datos.ot else ""
-    checks = _ejecutar_checks(datos, id_proyecto, reglas, reglas_cnc)
+    checks = _ejecutar_checks(
+        datos, id_proyecto, reglas, reglas_cnc, csv_hubspot_existe
+    )
 
     return InformeFinal(
         id_proyecto=id_proyecto,
