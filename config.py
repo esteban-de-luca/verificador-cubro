@@ -54,6 +54,12 @@ NOTION_DB_ID: str = "344f687d-1343-80c0-9b63-000b2d119814"
 #: Scopes OAuth requeridos por la Service Account para operar sobre Drive.
 DRIVE_SCOPES: list[str] = ["https://www.googleapis.com/auth/drive"]
 
+#: ID de la carpeta de Drive donde se almacenan los CSV de exportación a
+#: HubSpot. Cada proyecto debe tener un CSV nombrado exactamente
+#: '{ID_PROYECTO}.csv' (validado por C-84). El Service Account necesita
+#: permiso de lectura sobre esta carpeta.
+DRIVE_HUBSPOT_EXPORT_ID: str = "1idi5wFo4w8yQ84l0qvO54iIIVa0xuHqi"
+
 
 # ---------------------------------------------------------------------------
 # Helpers internos de acceso a secrets

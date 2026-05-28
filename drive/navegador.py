@@ -181,6 +181,30 @@ def listar_proyectos(servicio: Any, semana_id: str) -> list[dict]:
     return proyectos
 
 
+def archivo_existe_en_carpeta(
+    servicio: Any, folder_id: str, nombre: str
+) -> bool:
+    """¿Existe un archivo con `nombre` exacto dentro de `folder_id`?
+
+    Match case-insensitive (Drive devuelve resultados sin distinguir
+    mayúsculas para el filtro `name = '…'`).
+    """
+    nombre_escapado = nombre.replace("\\", "\\\\").replace("'", "\\'")
+    query = (
+        f"'{folder_id}' in parents "
+        f"and name = '{nombre_escapado}' "
+        f"and trashed = false"
+    )
+    respuesta = servicio.files().list(
+        q=query,
+        fields="files(id, name)",
+        pageSize=1,
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+    ).execute(num_retries=2)
+    return bool(respuesta.get("files", []))
+
+
 def listar_archivos(servicio: Any, folder_id: str) -> list[dict]:
     """
     Archivos (no carpetas) dentro de una carpeta dada.
