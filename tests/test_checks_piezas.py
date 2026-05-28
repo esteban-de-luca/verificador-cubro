@@ -549,25 +549,58 @@ class TestC26:
 # C-27
 # ===========================================================================
 class TestC27:
-    def test_warn_rodapie_con_mecanizado(self, r):
-        piezas = [Pieza("R1", 100, 80, "PLY", "LAM", "Pale", "R",
-                        mecanizado="cazta.")]
-        res = check_mecanizado_rodapies(piezas, r)
-        assert res.resultado == "WARN" and not res.bloquea
-
+    # --- R: permitido vacío o 'cor.' ---
     def test_pass_rodapie_sin_mecanizado(self, r):
         piezas = [Pieza("R1", 100, 80, "PLY", "LAM", "Pale", "R")]
         assert check_mecanizado_rodapies(piezas, r).resultado == "PASS"
 
-    def test_warn_rv_sin_vent(self, r):
-        piezas = [Pieza("R2", 100, 80, "PLY", "LAM", "Pale", "RV",
-                        mecanizado="")]
-        assert check_mecanizado_rodapies(piezas, r).resultado == "WARN"
+    def test_pass_rodapie_con_cor(self, r):
+        """Caso real: R3 con 'cor.' no debe alertar."""
+        piezas = [Pieza("R3", 100, 80, "PLY", "LAM", "Pale", "R",
+                        mecanizado="cor.")]
+        assert check_mecanizado_rodapies(piezas, r).resultado == "PASS"
 
+    # --- R: FAIL para torn., mec., vent. y cualquier otro mec. ---
+    def test_fail_rodapie_con_torn(self, r):
+        piezas = [Pieza("R1", 100, 80, "PLY", "LAM", "Pale", "R",
+                        mecanizado="torn.")]
+        res = check_mecanizado_rodapies(piezas, r)
+        assert res.resultado == "FAIL" and not res.bloquea
+        assert "torn." in res.detalle
+
+    def test_fail_rodapie_con_mec(self, r):
+        piezas = [Pieza("R1", 100, 80, "PLY", "LAM", "Pale", "R",
+                        mecanizado="mec.")]
+        assert check_mecanizado_rodapies(piezas, r).resultado == "FAIL"
+
+    def test_fail_rodapie_con_vent(self, r):
+        # 'vent.' no debe colarse en un R; pertenece a RV.
+        piezas = [Pieza("R1", 100, 80, "PLY", "LAM", "Pale", "R",
+                        mecanizado="vent.")]
+        assert check_mecanizado_rodapies(piezas, r).resultado == "FAIL"
+
+    def test_fail_rodapie_con_cazta(self, r):
+        piezas = [Pieza("R1", 100, 80, "PLY", "LAM", "Pale", "R",
+                        mecanizado="cazta.")]
+        assert check_mecanizado_rodapies(piezas, r).resultado == "FAIL"
+
+    # --- RV: solo 'vent.' es válido ---
     def test_pass_rv_con_vent(self, r):
         piezas = [Pieza("R2", 100, 80, "PLY", "LAM", "Pale", "RV",
                         mecanizado="vent.")]
         assert check_mecanizado_rodapies(piezas, r).resultado == "PASS"
+
+    def test_fail_rv_sin_mecanizado(self, r):
+        piezas = [Pieza("R2", 100, 80, "PLY", "LAM", "Pale", "RV",
+                        mecanizado="")]
+        res = check_mecanizado_rodapies(piezas, r)
+        assert res.resultado == "FAIL" and not res.bloquea
+        assert "(vacío)" in res.detalle
+
+    def test_fail_rv_con_otro_mec(self, r):
+        piezas = [Pieza("R2", 100, 80, "PLY", "LAM", "Pale", "RV",
+                        mecanizado="cor.")]
+        assert check_mecanizado_rodapies(piezas, r).resultado == "FAIL"
 
 
 # ===========================================================================

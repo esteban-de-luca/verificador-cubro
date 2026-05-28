@@ -437,27 +437,44 @@ def check_baldas_dimensiones(piezas: list[Pieza], reglas: dict) -> CheckResult:
 
 
 # ---------------------------------------------------------------------------
-# C-27: Rodapiés R sin mecanizado (excepto vent. en RV)
+# C-27: Mecanizado válido en rodapiés (R y RV)
 # ---------------------------------------------------------------------------
 
 def check_mecanizado_rodapies(piezas: list[Pieza], reglas: dict) -> CheckResult:
     """
-    C-27: Rodapiés R no deben tener mecanizado.
-    RV solo debe tener vent. Bloquea: No.
+    C-27: Mecanizado válido en rodapiés.
+
+    R (rodapié estándar):
+      - Permitido: vacío o 'cor.'.
+      - FAIL: cualquier otro mec. ('torn.', 'mec.', 'vent.', etc.).
+
+    RV (rodapié con ventilación):
+      - Permitido: solo 'vent.'.
+      - FAIL: vacío o cualquier otro mec.
+
+    Bloquea: No.
     """
-    mec_esperado: dict = reglas["tipologias"]["mecanizado_esperado"]
     errores = []
     for p in piezas:
-        if p.tipologia == "R" and p.mecanizado.strip():
-            errores.append(f"{p.id}: rodapié con mecanizado '{p.mecanizado}'")
-        elif p.tipologia == "RV":
-            esperado = mec_esperado.get("RV", "vent.")
-            if esperado.lower() not in p.mecanizado.lower():
+        mec = p.mecanizado.strip().lower()
+        if p.tipologia == "R":
+            if mec and mec != "cor.":
                 errores.append(
-                    f"{p.id}: RV sin '{esperado}' (tiene: '{p.mecanizado}')"
+                    f"{p.id}: rodapié R con mec. '{p.mecanizado}' "
+                    f"(solo se permite vacío o 'cor.')"
                 )
-    return _resultado("C-27", "Rodapiés R sin mecanizado (RV solo vent.)",
-                      errores, False, _GRUPO_MEC, tipo_fail="WARN")
+        elif p.tipologia == "RV":
+            if mec != "vent.":
+                visible = p.mecanizado if p.mecanizado.strip() else "(vacío)"
+                errores.append(
+                    f"{p.id}: RV con mec. '{visible}' "
+                    f"(solo se permite 'vent.')"
+                )
+    return _resultado(
+        "C-27",
+        "Rodapiés: R solo vacío/'cor.'; RV solo 'vent.'",
+        errores, False, _GRUPO_MEC,
+    )
 
 
 # ---------------------------------------------------------------------------
