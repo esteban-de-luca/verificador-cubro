@@ -156,14 +156,24 @@ def _log_notion(informe: InformeFinal) -> None:
         st.toast(f"Notion no disponible: {exc}", icon="⚠️")
 
 
-_RE_ID_PROYECTO = re.compile(r"((?:EU|SP|C[1-5])-?\d{5}(?:-INC\d*)?)", re.IGNORECASE)
+# Formatos de ID en nombre de carpeta:
+#   - EU/SP/C[1-5] + 5 dígitos (con o sin guion), opcional -INC[N]
+#   - 4 dígitos sin prefijo seguidos de '_' o fin de cadena
+# El boundary inicial (^ o no-alfanumérico previo) evita matchear dentro de
+# otros tokens.
+_RE_ID_PROYECTO = re.compile(
+    r"(?:^|(?<=[^A-Za-z0-9]))"
+    r"((?:EU|SP|C[1-5])-?\d{5}(?:-INC\d*)?|\d{4}(?=_|$))",
+    re.IGNORECASE,
+)
 
 def _extraer_id_proyecto(nombre_limpio: str) -> str:
     """Extrae el ID de proyecto del nombre de carpeta.
 
-    Busca el patrón EU-XXXXX / SP-XXXXX donde sea que aparezca,
-    para tolerar prefijos como 'S5_EU-21247_...' o 'EU-21247_...'.
-    Si no hay match devuelve el primer segmento como fallback.
+    Busca el patrón EU-XXXXX / SP-XXXXX / C[1-5]-XXXXX o un ID numérico de
+    4 dígitos donde sea que aparezca, para tolerar prefijos como
+    'S5_EU-21247_...' o 'S6_4302_...'. Si no hay match devuelve el primer
+    segmento como fallback.
     """
     m = _RE_ID_PROYECTO.search(nombre_limpio)
     return m.group(1).upper() if m else nombre_limpio.split("_")[0]

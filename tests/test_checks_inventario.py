@@ -138,6 +138,38 @@ class TestC01:
         r = check_id_consistente(nombres, "SP-17124-INC")
         assert r.resultado == "PASS"
 
+    # --- ID numérico de 4 dígitos (proyectos tipo "4302") ---
+    def test_pass_id_4_digitos(self):
+        nombres = [
+            "DESPIECE_4302_baptiste_ducloux.xlsx",
+            "ETIQUETAS_4302_baptiste_ducloux.csv",
+            "4302_baptiste_ducloux_MDF_LACA_PINO.pdf",
+        ]
+        r = check_id_consistente(nombres, "4302")
+        assert r.resultado == "PASS"
+
+    def test_fail_id_4_digitos_inconsistente(self):
+        nombres = [
+            "DESPIECE_4302_baptiste.xlsx",
+            "ETIQUETAS_5500_otro.csv",
+        ]
+        r = check_id_consistente(nombres, "4302")
+        assert r.resultado == "FAIL"
+        assert "5500" in r.detalle
+
+    def test_pass_id_4_digitos_no_confunde_con_5_digitos(self):
+        # Una pieza con dimensión '12345' o un ID de 5 dígitos no debe
+        # interpretarse como ID de 4 dígitos.
+        nombres = [
+            "DESPIECE_4302_baptiste.xlsx",
+            "EU-12345_otro.pdf",  # ID EU correcto, no debería matchear 1234
+        ]
+        r = check_id_consistente(nombres, "4302")
+        # Solo el EU-12345 sería detectado y diferiría → FAIL
+        # (pero el match de 4 dígitos no debería disparar falso positivo)
+        assert r.resultado == "FAIL"
+        assert "EU-12345" in r.detalle or "EU12345" in r.detalle
+
 
 # ---------------------------------------------------------------------------
 # C-02
@@ -308,3 +340,26 @@ class TestC04:
         ot = _ot(tableros={"MDF_LAC_Crema": 1}, num_tableros_total=1)
         r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
         assert r.resultado == "FAIL"
+
+    # --- Proyectos con ID numérico de 4 dígitos (caso 4302) ---
+    def test_pass_id_4_digitos(self):
+        """Proyecto 4302 con un PDF nesting MDF → PASS."""
+        piezas = [_pieza(material="MDF", gama="LAC", acabado="Pino")]
+        nombres = [
+            "DESPIECE_4302_baptiste_ducloux.xlsx",
+            "4302_baptiste_ducloux_MDF_LACA_PINO.pdf",
+        ]
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas)
+        assert r.resultado == "PASS"
+
+    def test_despiece_pdf_no_se_cuenta_como_nesting(self):
+        """Un DESPIECE no debe contar como nesting aunque contenga MDF en el
+        nombre y un ID de 4 dígitos."""
+        piezas = [_pieza(material="MDF", gama="LAC", acabado="Pino")]
+        nombres = [
+            "DESPIECE_4302_baptiste_MDF_LACA_PINO.pdf",
+            "4302_baptiste_MDF_LACA_PINO.pdf",
+        ]
+        # Solo el segundo PDF (sin prefijo DESPIECE) debe contar
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas)
+        assert r.resultado == "PASS"

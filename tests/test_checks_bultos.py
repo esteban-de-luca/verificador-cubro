@@ -182,6 +182,16 @@ class TestC53:
         r = check_formato_id_bulto(filas, "SP-20848-INC2")
         assert r.resultado == "FAIL"
 
+    def test_pass_id_proyecto_4_digitos(self):
+        """Proyecto con ID numérico de 4 dígitos: CUB-4302-N-T es válido."""
+        filas = [
+            _fila(id_bulto="CUB-4302-1-3"),
+            _fila(id_bulto="CUB-4302-2-3"),
+            _fila(id_bulto="CUB-4302-3-3"),
+        ]
+        r = check_formato_id_bulto(filas, "4302")
+        assert r.resultado == "PASS"
+
 
 # ---------------------------------------------------------------------------
 # C-54

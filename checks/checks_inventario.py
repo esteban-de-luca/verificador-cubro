@@ -62,7 +62,16 @@ def check_documentos_presentes(nombres_archivos: list[str], reglas: dict) -> Che
 # C-01: ID de proyecto consistente en todos los archivos
 # ---------------------------------------------------------------------------
 
-_RE_ID_ARCHIVO = re.compile(r"(?<![A-Za-z])((?:EU|SP)-?\d{5}(?:[-_]INC\d*)?)", re.IGNORECASE)
+# Formatos de ID aceptados:
+#   - EU/SP + 5 dígitos (con o sin guion), opcional sufijo -INC / _INC[N]
+#   - 4 dígitos sin prefijo, siempre seguido de '_' (proyectos tipo "4302_cliente_…")
+# Lookbehind y lookahead evitan matchear dentro de números más largos (ej. EU22780
+# no genera un match de '2278'; un nombre con 5 dígitos numéricos no se confunde
+# con un ID de 4).
+_RE_ID_ARCHIVO = re.compile(
+    r"(?<![A-Za-z0-9])((?:EU|SP)-?\d{5}(?:[-_]INC\d*)?|\d{4}(?=_))",
+    re.IGNORECASE,
+)
 
 
 def check_id_consistente(nombres_archivos: list[str], id_proyecto: str) -> CheckResult:
@@ -169,8 +178,13 @@ def check_num_dxf_vs_ot(dxfs: list[DXFDoc], ot: OTData) -> CheckResult:
 # C-04: Nº PDFs nesting == combinaciones únicas material+gama+acabado
 # ---------------------------------------------------------------------------
 
+# Formatos de PDF nesting aceptados:
+#   - EU/SP/C[1-5] + dígitos (con o sin guion) en cualquier posición
+#   - 4 dígitos sin prefijo SOLO al inicio del nombre y seguidos de '_'
+#     (evita falsos positivos con dimensiones u otros números embebidos).
 _RE_NESTING_PDF = re.compile(
-    r"(?:EU|SP|C[1-5])-?\d+.*?(PLY|MDF).*?\.pdf$", re.IGNORECASE
+    r"(?:(?:EU|SP|C[1-5])-?\d+|^\d{4}_).*?(PLY|MDF).*?\.pdf$",
+    re.IGNORECASE,
 )
 
 
