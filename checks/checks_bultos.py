@@ -23,8 +23,10 @@ _GRUPO = "Logistica"
 # Regex para validar formato de ID de bulto: CUB-{ID_PROYECTO}-{N}-{TOTAL}
 # Acepta '-INC' o '_INC' indistintamente como separador, y opcionalmente sufijo
 # numérico (INC, INC2, INC3, ...) para incidencias sucesivas del mismo proyecto.
+# {ID_PROYECTO} puede ser EU/SP/C[1-5] + 5 dígitos o un ID numérico de 4 dígitos.
 _RE_ID_BULTO = re.compile(
-    r"^CUB-(?:EU|SP|C[1-5])-?\d{5}(?:[-_]INC\d*)?-\d+-\d+$", re.IGNORECASE
+    r"^CUB-(?:(?:EU|SP|C[1-5])-?\d{5}(?:[-_]INC\d*)?|\d{4})-\d+-\d+$",
+    re.IGNORECASE,
 )
 
 

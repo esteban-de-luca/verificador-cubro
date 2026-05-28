@@ -19,10 +19,14 @@ _RE_BULTO_TOTAL = re.compile(r"Bulto\s+\d+\s+de\s+(\d+)", re.IGNORECASE)
 # Acepta '_INC' o '-INC' como separador y opcionalmente sufijo numérico
 # (INC, INC2, INC3, ...). El código impreso bajo el barcode suele usar '_'
 # como separador (p.ej. 'CUB-SP-20848_INC2-1-1').
-_RE_CODIGO_CUB = re.compile(r"CUB-((?:EU|SP)-\d{5}(?:[-_]INC\d*)?)", re.IGNORECASE)
+_RE_CODIGO_CUB = re.compile(
+    r"CUB-((?:EU|SP)-\d{5}(?:[-_]INC\d*)?|\d{4})", re.IGNORECASE
+)
 # Fallback: el ID sin prefijo CUB- (texto grande de cabecera del PDF, siempre
-# con guiones).
-_RE_ID_PROYECTO = re.compile(r"\b((?:EU|SP)-\d{5}(?:-INC\d*)?)\b", re.IGNORECASE)
+# con guiones para EU/SP; los IDs de 4 dígitos van sin guion).
+_RE_ID_PROYECTO = re.compile(
+    r"\b((?:EU|SP)-\d{5}(?:-INC\d*)?|\d{4})\b", re.IGNORECASE
+)
 
 
 def _texto_pdf(origen: BinaryIO | Path | str) -> str:

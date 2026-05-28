@@ -35,8 +35,13 @@ from core.modelos import OTData
 # Regexes de extracción
 # ---------------------------------------------------------------------------
 
+# Formatos de ID en cabecera de OT:
+#   - EU/SP-XXXXX (5 dígitos), opcional -INC[N]
+#   - 4 dígitos sin prefijo (proyectos tipo "4302")
+# Para el formato numérico, `\b\d{4}\b` puede matchear años o cantidades; en
+# la práctica el ID figura cerca del inicio del documento, antes de fechas.
 _RE_ID_PROYECTO = re.compile(
-    r"\b((?:EU|SP)-\d{5}(?:-INC\d*)?)\b", re.IGNORECASE
+    r"\b((?:EU|SP)-\d{5}(?:-INC\d*)?|\d{4})\b", re.IGNORECASE
 )
 _RE_CLIENTE = re.compile(
     r"(?:cliente|client|customer)[:\s]+([A-Za-záéíóúàèìòùñüÁÉÍÓÚÑ ,.-]+?)(?:\n|$)",
