@@ -555,6 +555,37 @@ class TestC75:
         )
         assert r.resultado == "WARN"
 
+    def test_pass_incidencia_detectada_por_id_carpeta(self, reglas):
+        # Caso real SP-20594-INC: la tabla de la EXTRACCION usa el ID base del
+        # producto ('SP-20594', sin -INC), así que el carácter de incidencia
+        # debe deducirse del ID de la carpeta. Con P1 → PASS (no WARN).
+        r = check_prioridad_inc(
+            _extr(id_proyecto="SP-20594", prioridad_inc="P1"),
+            reglas,
+            id_proyecto="SP-20594-INC",
+        )
+        assert r.resultado == "PASS"
+
+    def test_warn_incidencia_por_carpeta_sin_valor(self, reglas):
+        # Incidencia (por carpeta) pero 'Prioridad de INC' vacía → WARN.
+        r = check_prioridad_inc(
+            _extr(id_proyecto="SP-20594", prioridad_inc=""),
+            reglas,
+            id_proyecto="SP-20594-INC",
+        )
+        assert r.resultado == "WARN"
+        assert "vacía" in r.detalle.lower() or "vacia" in r.detalle.lower()
+
+    def test_warn_no_inc_por_carpeta_con_valor(self, reglas):
+        # Proyecto NO incidencia (ni carpeta ni tabla son -INC) con prioridad
+        # rellenada → sigue siendo WARN.
+        r = check_prioridad_inc(
+            _extr(id_proyecto="SP-20594", prioridad_inc="P1"),
+            reglas,
+            id_proyecto="SP-20594",
+        )
+        assert r.resultado == "WARN"
+
 
 # ---------------------------------------------------------------------------
 # C-76: tabla EXTRACCION ↔ DESPIECE — IDs

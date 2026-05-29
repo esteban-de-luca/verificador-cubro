@@ -16,7 +16,9 @@ import fnmatch
 import re
 
 from core.modelos import CheckResult, DXFDoc, OTData, Pieza
-from checks._helpers import _pass, _fail, _warn, _skip, _resultado
+from checks._helpers import (
+    _pass, _fail, _warn, _skip, _resultado, _norm_id, _id_coincide_proyecto,
+)
 
 _GRUPO = "Inventario"
 
@@ -77,14 +79,19 @@ _RE_ID_ARCHIVO = re.compile(
 def check_id_consistente(nombres_archivos: list[str], id_proyecto: str) -> CheckResult:
     """
     C-01: Todos los archivos que contienen un ID de proyecto usan el mismo.
+
+    En proyectos de incidencia (sufijo -INC), algunos archivos —típicamente el
+    EAN LOGISTIC— se nombran con el ID base del producto original (sin -INC),
+    porque la logística/EAN se hereda del proyecto base. Ese ID base se acepta
+    como consistente con el ID de la incidencia (p. ej. 'SP-20594' en un
+    proyecto 'SP-20594-INC').
     Bloquea: Sí.
     """
-    id_norm = id_proyecto.upper().replace("-", "").replace("_", "")
+    id_norm = _norm_id(id_proyecto)
     errores = []
     for nombre in nombres_archivos:
         for m in _RE_ID_ARCHIVO.finditer(nombre):
-            id_en_archivo = m.group(1).upper().replace("-", "").replace("_", "")
-            if id_en_archivo != id_norm:
+            if not _id_coincide_proyecto(_norm_id(m.group(1)), id_norm):
                 errores.append(f"{nombre}: ID encontrado '{m.group(1)}' ≠ '{id_proyecto}'")
     return _resultado("C-01", "ID proyecto consistente en todos los archivos", errores, True, _GRUPO)
 

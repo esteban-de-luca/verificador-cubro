@@ -138,6 +138,41 @@ class TestC01:
         r = check_id_consistente(nombres, "SP-17124-INC")
         assert r.resultado == "PASS"
 
+    def test_ean_logistic_usa_id_base_en_incidencia(self):
+        # Caso real SP-20594-INC: el EAN LOGISTIC se nombra con el ID base del
+        # producto original (SP-20594, sin -INC) porque la logística/EAN se
+        # hereda del proyecto base. Debe considerarse consistente.
+        nombres = [
+            "DESPIECE_SP-20594-INC_Sandra_Lopez.xlsx",
+            "OT_SP-20594-INC_Sandra_Lopez.pdf",
+            "EXTRACCION_SP-20594-INC_Sandra_Lopez.csv",
+            "ETIQUETAS_SP-20594-INC_Sandra_Lopez.csv",
+            "EAN LOGISTIC_SP-20594_Sandra Lopez.csv",
+        ]
+        r = check_id_consistente(nombres, "SP-20594-INC")
+        assert r.resultado == "PASS"
+
+    def test_incidencia_no_tolera_id_base_de_otro_proyecto(self):
+        # La tolerancia al ID base aplica solo al base del PROPIO proyecto;
+        # el base de otro proyecto (SP-21493) sigue siendo inconsistente.
+        nombres = [
+            "DESPIECE_SP-20594-INC.xlsx",
+            "EAN LOGISTIC_SP-21493.csv",
+        ]
+        r = check_id_consistente(nombres, "SP-20594-INC")
+        assert r.resultado == "FAIL"
+        assert "SP-21493" in r.detalle
+
+    def test_proyecto_base_no_tolera_sufijo_inc_extra(self):
+        # A la inversa: un proyecto base (sin -INC) no debe aceptar un archivo
+        # con sufijo -INC como si fuera el mismo ID.
+        nombres = [
+            "DESPIECE_SP-20594.xlsx",
+            "EAN LOGISTIC_SP-20594-INC.csv",
+        ]
+        r = check_id_consistente(nombres, "SP-20594")
+        assert r.resultado == "FAIL"
+
     # --- ID numérico de 4 dígitos (proyectos tipo "4302") ---
     def test_pass_id_4_digitos(self):
         nombres = [

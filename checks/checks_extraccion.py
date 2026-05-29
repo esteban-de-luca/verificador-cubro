@@ -24,7 +24,7 @@ import unicodedata
 
 from core.modelos import CheckResult, ExtraccionData, OTData, Pieza
 from core.extractor_extraccion import cod_tab_a_clave_canonica
-from checks._helpers import _pass, _fail, _warn, _skip, _resultado
+from checks._helpers import _pass, _fail, _warn, _skip, _resultado, _es_incidencia
 
 _GRUPO = "Extraccion"
 
@@ -314,27 +314,37 @@ def check_tableros_codificados(
 # C-75: prioridad INC válida solo en proyectos -INC
 # ---------------------------------------------------------------------------
 
-def check_prioridad_inc(extr: ExtraccionData, reglas: dict) -> CheckResult:
-    """C-75: WARN. Solo se rellena en proyectos -INC con valor de la lista."""
+def check_prioridad_inc(
+    extr: ExtraccionData, reglas: dict, id_proyecto: str = ""
+) -> CheckResult:
+    """
+    C-75: WARN. 'Prioridad de INC' solo se rellena en proyectos -INC y con un
+    valor de la lista; en proyectos no-INC debe estar vacía.
+
+    El carácter de incidencia se determina por el ID de proyecto de la carpeta
+    (`id_proyecto`), no por la tabla de la EXTRACCION: esta referencia el ID
+    base del producto (sin -INC), por lo que por sí sola no distingue una
+    incidencia. Se mantiene `extr.id_proyecto` como señal secundaria.
+    """
     desc = "Prioridad INC rellenada solo en -INC con valor válido"
     cfg = (reglas or {}).get("extraccion", {}) or {}
     validas = set(cfg.get("prioridades_inc_validas", []))
 
-    id_norm = extr.id_proyecto.upper().replace("_", "-")
-    es_inc = "-INC" in id_norm
+    es_inc = _es_incidencia(id_proyecto) or _es_incidencia(extr.id_proyecto)
+    id_display = id_proyecto or extr.id_proyecto
     valor = extr.prioridad_inc.strip()
 
     if es_inc:
         if not valor:
             return _warn(
                 "C-75", desc,
-                f"{extr.id_proyecto} es -INC pero 'Prioridad de INC' está vacía",
+                f"{id_display} es -INC pero 'Prioridad de INC' está vacía",
                 _GRUPO,
             )
         if validas and valor not in validas:
             return _warn(
                 "C-75", desc,
-                f"{extr.id_proyecto}: prioridad '{valor}' no válida "
+                f"{id_display}: prioridad '{valor}' no válida "
                 f"(esperado uno de {sorted(validas)})",
                 _GRUPO,
             )
@@ -344,7 +354,7 @@ def check_prioridad_inc(extr: ExtraccionData, reglas: dict) -> CheckResult:
     if valor:
         return _warn(
             "C-75", desc,
-            f"{extr.id_proyecto} no es -INC pero tiene 'Prioridad de INC' = '{valor}'",
+            f"{id_display} no es -INC pero tiene 'Prioridad de INC' = '{valor}'",
             _GRUPO,
         )
     return _pass("C-75", desc, False, _GRUPO)
