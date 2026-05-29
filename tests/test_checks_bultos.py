@@ -192,6 +192,21 @@ class TestC53:
         r = check_formato_id_bulto(filas, "4302")
         assert r.resultado == "PASS"
 
+    def test_pass_id_base_en_incidencia(self):
+        """Caso real SP-20594-INC: el EAN emite los bultos con el ID base del
+        producto original ('CUB-SP-20594-N-8', sin -INC) porque la logística se
+        hereda del producto base. Debe aceptarse como coincidente."""
+        filas = [_fila(id_bulto=f"CUB-SP-20594-{n}-8") for n in range(1, 9)]
+        r = check_formato_id_bulto(filas, "SP-20594-INC")
+        assert r.resultado == "PASS"
+
+    def test_fail_id_base_de_otro_proyecto_en_incidencia(self):
+        """La tolerancia al ID base aplica solo al base del PROPIO proyecto;
+        el base de otro proyecto sigue siendo inconsistente."""
+        filas = [_fila(id_bulto="CUB-SP-21493-1-2")]
+        r = check_formato_id_bulto(filas, "SP-20594-INC")
+        assert r.resultado == "FAIL"
+
 
 # ---------------------------------------------------------------------------
 # C-54

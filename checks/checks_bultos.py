@@ -16,7 +16,9 @@ import re
 
 from core.modelos import CheckResult, OTData, Pieza
 from core.extractor_etiquetas_ean import FilaEAN
-from checks._helpers import _pass, _fail, _warn, _skip, _resultado
+from checks._helpers import (
+    _pass, _fail, _warn, _skip, _resultado, _norm_id, _id_coincide_proyecto,
+)
 
 _GRUPO = "Logistica"
 
@@ -97,8 +99,16 @@ def check_piezas_sin_duplicados(filas_ean: list[FilaEAN]) -> CheckResult:
 # ---------------------------------------------------------------------------
 
 def check_formato_id_bulto(filas_ean: list[FilaEAN], id_proyecto: str) -> CheckResult:
-    """C-53: Todos los IDs de bulto siguen el formato CUB-{ID}-{N}-{TOTAL}. Bloquea: Sí."""
-    id_norm = id_proyecto.upper().replace("-", "").replace("_", "")
+    """
+    C-53: Todos los IDs de bulto siguen el formato CUB-{ID}-{N}-{TOTAL}.
+
+    En proyectos de incidencia (sufijo -INC) el EAN suele emitir los bultos con
+    el ID base del producto original (p. ej. 'CUB-SP-20594-1-8' en el proyecto
+    'SP-20594-INC'), porque la logística se hereda del producto base; ese ID
+    base se acepta como coincidente.
+    Bloquea: Sí.
+    """
+    id_norm = _norm_id(id_proyecto)
     errores = []
     for f in filas_ean:
         if not _RE_ID_BULTO.match(f.id_bulto):
@@ -110,7 +120,7 @@ def check_formato_id_bulto(filas_ean: list[FilaEAN], id_proyecto: str) -> CheckR
             # CUB-EU-21822-1-5 → partes = ['CUB','EU','21822','1','5']
             # CUB-EU21822-1-5  → partes = ['CUB','EU21822','1','5'] (sin guión en ID)
             id_en_bulto = "".join(p for p in partes[1:-2] if p.isalnum())
-            if id_norm and id_en_bulto and id_en_bulto != id_norm:
+            if id_norm and id_en_bulto and not _id_coincide_proyecto(id_en_bulto, id_norm):
                 errores.append(
                     f"Bulto '{f.id_bulto}': proyecto '{id_en_bulto}' ≠ '{id_norm}'"
                 )
