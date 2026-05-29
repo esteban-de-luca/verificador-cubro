@@ -375,7 +375,7 @@ def _ejecutar_checks(
         resultados.append(check_logistica_envio(datos.extraccion, ot, reglas))
         resultados.append(check_metros_canto(datos.extraccion, ot, reglas))
         resultados.append(check_tableros_codificados(datos.extraccion, ot, datos.naming))
-        resultados.append(check_prioridad_inc(datos.extraccion, reglas))
+        resultados.append(check_prioridad_inc(datos.extraccion, reglas, id_proyecto))
         resultados.append(check_tabla_ids_vs_despiece(datos.extraccion, datos.piezas))
         resultados.append(check_tabla_dimensiones_material(datos.extraccion, datos.piezas))
         resultados.append(check_tabla_tipologia_mecanizado(datos.extraccion, datos.piezas))

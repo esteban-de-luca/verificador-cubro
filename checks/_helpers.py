@@ -34,6 +34,11 @@ def _id_coincide_proyecto(id_encontrado_norm: str, id_proyecto_norm: str) -> boo
     return id_base != id_proyecto_norm and id_encontrado_norm == id_base
 
 
+def _es_incidencia(id_proyecto: str) -> bool:
+    """True si el ID corresponde a una incidencia (sufijo -INC, -INC2, …)."""
+    return "-INC" in id_proyecto.upper().replace("_", "-")
+
+
 def _pass(id: str, desc: str, bloquea: bool, grupo: str) -> CheckResult:
     return CheckResult(id, desc, "PASS", "Correcto", bloquea, grupo)
 
