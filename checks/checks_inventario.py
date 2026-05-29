@@ -73,19 +73,34 @@ _RE_ID_ARCHIVO = re.compile(
     re.IGNORECASE,
 )
 
+# Sufijo de incidencia (INC, INC2, …) sobre un ID ya normalizado (sin guiones).
+_RE_INC_SUFIJO = re.compile(r"INC\d*$")
+
 
 def check_id_consistente(nombres_archivos: list[str], id_proyecto: str) -> CheckResult:
     """
     C-01: Todos los archivos que contienen un ID de proyecto usan el mismo.
+
+    En proyectos de incidencia (sufijo -INC), algunos archivos —típicamente el
+    EAN LOGISTIC— se nombran con el ID base del producto original (sin -INC),
+    porque la logística/EAN se hereda del proyecto base. Ese ID base se acepta
+    como consistente con el ID de la incidencia (p. ej. 'SP-20594' en un
+    proyecto 'SP-20594-INC').
     Bloquea: Sí.
     """
     id_norm = id_proyecto.upper().replace("-", "").replace("_", "")
+    id_base = _RE_INC_SUFIJO.sub("", id_norm)
+    es_incidencia = id_base != id_norm
     errores = []
     for nombre in nombres_archivos:
         for m in _RE_ID_ARCHIVO.finditer(nombre):
             id_en_archivo = m.group(1).upper().replace("-", "").replace("_", "")
-            if id_en_archivo != id_norm:
-                errores.append(f"{nombre}: ID encontrado '{m.group(1)}' ≠ '{id_proyecto}'")
+            if id_en_archivo == id_norm:
+                continue
+            # En incidencias se tolera el ID base del propio proyecto.
+            if es_incidencia and id_en_archivo == id_base:
+                continue
+            errores.append(f"{nombre}: ID encontrado '{m.group(1)}' ≠ '{id_proyecto}'")
     return _resultado("C-01", "ID proyecto consistente en todos los archivos", errores, True, _GRUPO)
 
 
