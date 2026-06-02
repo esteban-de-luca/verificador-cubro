@@ -733,30 +733,38 @@ class TestC80:
         assert r.resultado == "PASS"
 
     def test_pass_2h_coincide(self, reglas):
-        baldas = [_pieza("B1", ancho=200, alto=600, tipologia="B")]
+        baldas = [_pieza("B1", ancho=200, alto=600, tipologia="B", mecanizado="mec.")]
         r = check_baldas_herrajes(_extr(baldas_2h=1), baldas, reglas)
         assert r.resultado == "PASS"
 
     def test_pass_orientacion_invertida(self, reglas):
         """200×600 ≡ 600×200 (orientación libre)."""
-        baldas = [_pieza("B1", ancho=600, alto=200, tipologia="B")]
+        baldas = [_pieza("B1", ancho=600, alto=200, tipologia="B", mecanizado="mec.")]
         r = check_baldas_herrajes(_extr(baldas_2h=1), baldas, reglas)
         assert r.resultado == "PASS"
 
     def test_warn_recuento_2h_distinto(self, reglas):
-        baldas = [_pieza("B1", ancho=200, alto=600, tipologia="B")]
+        baldas = [_pieza("B1", ancho=200, alto=600, tipologia="B", mecanizado="mec.")]
         r = check_baldas_herrajes(_extr(baldas_2h=2), baldas, reglas)
         assert r.resultado == "WARN"
         assert "2 herrajes" in r.detalle
 
     def test_pass_3h_coincide(self, reglas):
-        baldas = [_pieza("B1", ancho=200, alto=1200, tipologia="B")]
+        baldas = [_pieza("B1", ancho=200, alto=1200, tipologia="B", mecanizado="mec.")]
         r = check_baldas_herrajes(_extr(baldas_3h=1), baldas, reglas)
         assert r.resultado == "PASS"
 
     def test_pieza_b_fuera_de_dims_no_cuenta(self, reglas):
         """Una balda B con dimensión no estándar no cuenta para 2h ni 3h."""
-        baldas = [_pieza("B1", ancho=400, alto=500, tipologia="B")]
+        baldas = [_pieza("B1", ancho=400, alto=500, tipologia="B", mecanizado="mec.")]
+        r = check_baldas_herrajes(_extr(baldas_2h=0, baldas_3h=0), baldas, reglas)
+        assert r.resultado == "PASS"
+
+    def test_pass_balda_sin_mecanizar_no_cuenta(self, reglas):
+        """Una balda B con dimensión estándar pero SIN mecanizar (mecanizado
+        vacío) no lleva herrajes ocultos y no debe contar. Caso real EU-21732:
+        B1 200×1200 'balda sin mecanizar' ↔ EXTRACCION baldas_3h=0."""
+        baldas = [_pieza("B1", ancho=200, alto=1200, tipologia="B", mecanizado="")]
         r = check_baldas_herrajes(_extr(baldas_2h=0, baldas_3h=0), baldas, reglas)
         assert r.resultado == "PASS"
 

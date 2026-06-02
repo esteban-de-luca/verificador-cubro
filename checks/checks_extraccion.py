@@ -505,7 +505,12 @@ def check_baldas_herrajes(
     reglas: dict,
 ) -> CheckResult:
     """C-80: WARN. Las cantidades de baldas con 2/3 herrajes ocultos en
-    EXTRACCION deben cuadrar con los conteos por dimensiones del DESPIECE."""
+    EXTRACCION deben cuadrar con los conteos por dimensiones del DESPIECE.
+
+    Solo cuentan las baldas mecanizadas: una balda tipología B con
+    ``mecanizado`` vacío está "sin mecanizar" y no lleva herrajes ocultos,
+    aunque sus dimensiones coincidan con las estándar. Mismo criterio que
+    C-26 (check_baldas_dimensiones)."""
     desc = "Baldas con herrajes (EXTRACCION) ↔ DESPIECE tipología B"
     cfg = (reglas or {}).get("extraccion", {}) or {}
     dims_2h_raw = cfg.get("baldas_2h_dims", []) or []
@@ -523,7 +528,11 @@ def check_baldas_herrajes(
     dims_2h = _pares(dims_2h_raw)
     dims_3h = _pares(dims_3h_raw)
 
-    baldas = [p for p in piezas if p.tipologia == "B"]
+    # Excluir baldas sin mecanizar (mecanizado vacío): no llevan herrajes
+    # ocultos aunque su dimensión coincida con la estándar (mismo criterio
+    # que C-26). Sin este filtro, una balda B1 200×1200 "sin mecanizar"
+    # cuenta como 3 herrajes y choca con la EXTRACCION, que reporta 0.
+    baldas = [p for p in piezas if p.tipologia == "B" and p.mecanizado.strip()]
     n_2h_desp = sum(1 for p in baldas if (p.ancho, p.alto) in dims_2h)
     n_3h_desp = sum(1 for p in baldas if (p.ancho, p.alto) in dims_3h)
 
