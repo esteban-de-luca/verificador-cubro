@@ -774,7 +774,9 @@ class TestC44:
         r = check_distancia_bisagras([_dxf_con_circulos(circs)], reglas)
         assert r.resultado == "FAIL"
         assert r.bloquea
-        assert "518" in r.detalle
+        # 518mm no es múltiplo de 50 → desfase +18mm respecto a 10×50=500
+        assert "+18" in r.detalle
+        assert "METOD" in r.detalle
 
     def test_pass_metod_vertical_3bisagras_550(self, reglas):
         # 3 bisagras separadas 550mm (11×50) cada una
@@ -828,7 +830,9 @@ class TestC44:
         ]
         r = check_distancia_bisagras([_dxf_con_circulos(circs)], reglas)
         assert r.resultado == "FAIL"
-        assert "195" in r.detalle or "925" in r.detalle
+        # 195mm vs 6×32=192 → desfase +3mm
+        assert "+3" in r.detalle
+        assert "PAX" in r.detalle
 
     def test_id_check(self, reglas):
         r = check_distancia_bisagras([], reglas)
@@ -901,7 +905,8 @@ class TestC44:
         )
         assert r.resultado == "FAIL"
         assert r.bloquea
-        assert "60" in r.detalle and "68" in r.detalle
+        # cazoleta a 60mm del borde (esperado 68) → desfase -8mm
+        assert "68" in r.detalle and "-8" in r.detalle
 
     def test_pass_pax_altillo_contorno_laca(self, reglas):
         # Altillo PAX en una pieza con contorno layer "10_12-CONTORNO LACA"
