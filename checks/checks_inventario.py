@@ -15,9 +15,10 @@ from __future__ import annotations
 import fnmatch
 import re
 
-from core.modelos import CheckResult, DXFDoc, OTData, Pieza
+from core.modelos import CheckResult, DXFDoc, ExtraccionData, OTData, Pieza
 from checks._helpers import (
     _pass, _fail, _warn, _skip, _resultado, _norm_id, _id_coincide_proyecto,
+    _RE_INC_SUFIJO,
 )
 
 _GRUPO = "Inventario"
@@ -76,7 +77,70 @@ _RE_ID_ARCHIVO = re.compile(
 )
 
 
-def check_id_consistente(nombres_archivos: list[str], id_proyecto: str) -> CheckResult:
+def _ids_internos(
+    ot: OTData | None,
+    extraccion: ExtraccionData | None,
+    filas_ean: list | None,
+) -> list[tuple[str, str]]:
+    """IDs de proyecto declarados DENTRO del contenido de los documentos.
+
+    Devuelve [(fuente, id_crudo)] — el ID tal como aparece dentro de la OT,
+    el EXTRACCION y el EAN (este último embebido en el ID de bulto). Orden:
+    OT, EXTRACCION, EAN (la OT es la fuente preferida para el ID a mostrar).
+    """
+    internos: list[tuple[str, str]] = []
+    if ot is not None and getattr(ot, "id_proyecto", ""):
+        internos.append(("OT", ot.id_proyecto))
+    if extraccion is not None and getattr(extraccion, "id_proyecto", ""):
+        internos.append(("EXTRACCION", extraccion.id_proyecto))
+    if filas_ean:
+        for f in filas_ean:
+            m = _RE_ID_ARCHIVO.search(getattr(f, "id_bulto", "") or "")
+            if m:
+                internos.append(("EAN", m.group(1)))
+                break  # un bulto representativo basta
+    return internos
+
+
+def _id_real_segun_contenido(
+    internos: list[tuple[str, str]],
+    id_norm: str,
+) -> tuple[str, list[str]] | None:
+    """Detecta el caso 'la carpeta/nombres dicen una incidencia, pero el
+    contenido dice otra'.
+
+    Si TODOS los documentos cuyo contenido comparte la base del proyecto
+    esperado declaran, de forma unánime, un ID con DISTINTA incidencia, lo
+    devuelve como (id_a_mostrar, [fuentes]). Si no hay unanimidad o el
+    contenido coincide con lo esperado, devuelve None (no se afirma nada).
+    """
+    base_esperado = _RE_INC_SUFIJO.sub("", id_norm)
+    base_internos = [
+        (fuente, _norm_id(raw), raw)
+        for fuente, raw in internos
+        if _RE_INC_SUFIJO.sub("", _norm_id(raw)) == base_esperado
+    ]
+    if not base_internos:
+        return None
+    norms = {norm for _, norm, _ in base_internos}
+    if len(norms) != 1:
+        return None  # los documentos internos no se ponen de acuerdo
+    (norm_real,) = norms
+    if norm_real == id_norm:
+        return None  # el contenido coincide con lo esperado
+    # ID a mostrar: el primer crudo (OT preferida); normaliza '_INC' → '-INC'.
+    raw_real = base_internos[0][2].replace("_INC", "-INC")
+    fuentes = sorted({fuente for fuente, _, _ in base_internos})
+    return raw_real, fuentes
+
+
+def check_id_consistente(
+    nombres_archivos: list[str],
+    id_proyecto: str,
+    ot: OTData | None = None,
+    extraccion: ExtraccionData | None = None,
+    filas_ean: list | None = None,
+) -> CheckResult:
     """
     C-01: Todos los archivos que contienen un ID de proyecto usan el mismo.
 
@@ -85,15 +149,44 @@ def check_id_consistente(nombres_archivos: list[str], id_proyecto: str) -> Check
     porque la logística/EAN se hereda del proyecto base. Ese ID base se acepta
     como consistente con el ID de la incidencia (p. ej. 'SP-20594' en un
     proyecto 'SP-20594-INC').
+
+    Además de los NOMBRES de archivo, compara la incidencia con el ID declarado
+    DENTRO de los documentos (OT, EXTRACCION, EAN). Cuando el contenido apunta
+    unánimemente a otra incidencia que la esperada, el problema no es el archivo
+    señalado sino el ID del proyecto: en ese caso indica cuál es la incidencia
+    real y qué renombrar, en vez de listar discrepancias de nombre.
     Bloquea: Sí.
     """
     id_norm = _norm_id(id_proyecto)
+    DESC = "ID proyecto consistente en todos los archivos"
+
+    # ¿El contenido interno revela que la incidencia real es otra?
+    real = _id_real_segun_contenido(_ids_internos(ot, extraccion, filas_ean), id_norm)
+    if real is not None:
+        raw_real, fuentes = real
+        norm_real = _norm_id(raw_real)
+        mal_nombrados = []
+        for nombre in nombres_archivos:
+            if any(_norm_id(m.group(1)) != norm_real
+                   for m in _RE_ID_ARCHIVO.finditer(nombre)):
+                mal_nombrados.append(nombre)
+        detalle = (
+            f"El contenido de los documentos declara el proyecto como "
+            f"'{raw_real}' (según {', '.join(fuentes)}), pero la carpeta/ID "
+            f"esperado es '{id_proyecto}'. El proyecto es realmente {raw_real}: "
+            f"corrige el ID de la carpeta"
+            + (f" y el nombre de: {', '.join(mal_nombrados)}" if mal_nombrados else "")
+            + " para que todo use la misma incidencia."
+        )
+        return _fail("C-01", DESC, detalle, True, _GRUPO)
+
+    # Comportamiento estándar: consistencia por nombre de archivo.
     errores = []
     for nombre in nombres_archivos:
         for m in _RE_ID_ARCHIVO.finditer(nombre):
             if not _id_coincide_proyecto(_norm_id(m.group(1)), id_norm):
                 errores.append(f"{nombre}: ID encontrado '{m.group(1)}' ≠ '{id_proyecto}'")
-    return _resultado("C-01", "ID proyecto consistente en todos los archivos", errores, True, _GRUPO)
+    return _resultado("C-01", DESC, errores, True, _GRUPO)
 
 
 # ---------------------------------------------------------------------------

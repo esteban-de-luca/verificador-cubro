@@ -205,6 +205,50 @@ class TestC01:
         assert r.resultado == "FAIL"
         assert "EU-12345" in r.detalle or "EU12345" in r.detalle
 
+    # --- Incidencia real según el contenido interno de los documentos ---
+    def test_contenido_revela_incidencia_real(self):
+        # Caso real SP-19751: carpeta y nombres de DESPIECE/OT dicen 'INC', pero
+        # el contenido de la OT y del EAN declara 'INC2'. El check debe indicar
+        # que la incidencia real es INC2 y qué renombrar, sin acusar al EAN.
+        from core.modelos import OTData
+        from core.extractor_etiquetas_ean import FilaEAN
+        nombres = [
+            "DESPIECE_SP19751INC_Nora.xlsx",
+            "OT_SP19751INC_Nora.pdf",
+            "EAN LOGISTIC_SP-19751_INC2_Nora.csv",
+        ]
+        ot = OTData("SP-19751-INC2", "", "", 0, 0.0, 0)
+        ean = [FilaEAN("CUB-SP-19751_INC2-1-1", 1, 1, "T1 / T2 / T3", 3.894)]
+        r = check_id_consistente(nombres, "SP-19751-INC", ot=ot, filas_ean=ean)
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "SP-19751-INC2" in r.detalle
+        assert "realmente" in r.detalle.lower()
+        # Señala los archivos mal nombrados (DESPIECE/OT), no el EAN
+        assert "DESPIECE_SP19751INC_Nora.xlsx" in r.detalle
+        assert "OT_SP19751INC_Nora.pdf" in r.detalle
+        assert "EAN LOGISTIC_SP-19751_INC2_Nora.csv" not in r.detalle
+
+    def test_no_directiva_si_contenido_coincide_con_esperado(self):
+        # Si el contenido interno coincide con el ID esperado, no se afirma nada
+        # y el check pasa (nombres también consistentes).
+        from core.modelos import OTData
+        nombres = ["DESPIECE_SP-19751-INC.xlsx", "OT_SP-19751-INC.pdf"]
+        ot = OTData("SP-19751-INC", "", "", 0, 0.0, 0)
+        r = check_id_consistente(nombres, "SP-19751-INC", ot=ot)
+        assert r.resultado == "PASS"
+
+    def test_no_directiva_si_contenido_no_es_unanime(self):
+        # Si los documentos internos discrepan entre sí (OT=INC2, EXTRACCION=INC),
+        # no se afirma una incidencia real; se cae al chequeo por nombre.
+        from core.modelos import OTData, ExtraccionData
+        nombres = ["DESPIECE_SP-19751-INC.xlsx", "OT_SP-19751-INC.pdf"]
+        ot = OTData("SP-19751-INC2", "", "", 0, 0.0, 0)
+        extr = ExtraccionData(id_proyecto="SP-19751-INC")
+        r = check_id_consistente(nombres, "SP-19751-INC", ot=ot, extraccion=extr)
+        # Nombres coinciden con lo esperado → PASS (sin directiva)
+        assert r.resultado == "PASS"
+
 
 # ---------------------------------------------------------------------------
 # C-02
