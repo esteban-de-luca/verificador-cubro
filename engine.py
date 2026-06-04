@@ -286,7 +286,8 @@ def _ejecutar_checks(
 
     # Inventario (C-00..C-04)
     resultados.append(check_documentos_presentes(datos.nombres, reglas))
-    resultados.append(check_id_consistente(datos.nombres, id_proyecto))
+    resultados.append(check_id_consistente(
+        datos.nombres, id_proyecto, ot, datos.extraccion, datos.filas_ean))
     resultados.append(check_nomenclatura(datos.nombres, reglas))
     resultados.append(check_num_dxf_vs_ot(datos.dxfs, ot))
     resultados.append(check_pdfs_nesting_vs_materiales(datos.nombres, datos.piezas, ot))
