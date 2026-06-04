@@ -581,6 +581,38 @@ def _es_pieza_especial(
     return None
 
 
+#: Gama interna → palabra tal como aparece en el nombre del DXF (para mostrar
+#: el acabado al equipo igual que en Drive: "MDF WOOD ROBLE", "MDF LACA MARGA").
+#: Inverso de core.extractor_dxf._GAMA_ALIAS.
+_GAMA_DISPLAY = {"LAM": "LAMINADO", "LIN": "LINOLEO", "LAC": "LACA", "WOO": "WOOD"}
+
+
+def _etiqueta_acabado(dxf: DXFDoc) -> str:
+    """Descriptor material+acabado legible, p. ej. 'MDF WOOD ROBLE'.
+
+    Se reconstruye desde los campos ya parseados del nombre del DXF. Si el
+    nombre no se pudo parsear (campos vacíos), cae al nombre completo.
+    """
+    gama = _GAMA_DISPLAY.get(dxf.gama, dxf.gama)
+    partes = [p for p in (dxf.material, gama, dxf.acabado) if p]
+    return " ".join(partes).upper() if partes else dxf.nombre
+
+
+def _fmt_mm(v: float) -> str:
+    """Formatea un desfase con signo y sin decimales superfluos: +18mm, -4mm, -1.5mm."""
+    s = f"{v:+.1f}"
+    if s.endswith(".0"):
+        s = s[:-2]
+    return f"{s}mm"
+
+
+def _linea_puerta(etiqueta: str, tablero: int, ancho: float,
+                  alto: float, sufijo: str) -> str:
+    """Línea de detalle de una puerta afectada (ANCHO x ALTO mm)."""
+    return (f"· {etiqueta} · T{tablero} — "
+            f"Puerta de {ancho:.0f}x{alto:.0f} mm ({sufijo})")
+
+
 def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     """C-44: Distancia entre bisagras según tipo de bisagra y tamaño de pieza.
 
@@ -612,7 +644,12 @@ def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     borde_altillo: float = float(altillo_cfg.get("borde_mm", 68))
     configs_especiales: list[dict] = cfg.get("configuraciones_especiales") or []
 
-    errores: list[str] = []
+    # Problemas recolectados por tipo de regla, para agruparlos en el detalle.
+    prob_metod: list[str] = []        # distancia no múltiplo de paso_metod
+    prob_pax: list[str] = []          # distancia no múltiplo de paso_pax
+    prob_altillo: list[str] = []      # cazoleta no a borde_altillo del borde
+    prob_pocas: list[str] = []        # puerta con < 2 bisagras
+    prob_sin_pieza: list[str] = []    # cazoleta fuera de todo contorno
     algun_tablero_con_bisagras = False
 
     for dxf in dxfs:
@@ -645,10 +682,10 @@ def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
 
             pieza_idx = _asignar_pieza(c["x"], c["y"], contornos)
             if pieza_idx is None:
-                errores.append(
-                    f"{dxf.nombre} — bisagra {tipo} en "
-                    f"({c['x']:.0f}, {c['y']:.0f}): sin pieza asignada "
-                    f"(no cae dentro de ningún contorno CUTEXT / CONTORNO LACA)"
+                prob_sin_pieza.append(
+                    f"· {_etiqueta_acabado(dxf)} · T{dxf.tablero_num} — "
+                    f"bisagra {tipo} sin pieza asignada "
+                    f"(en {c['x']:.0f},{c['y']:.0f}, fuera de todo contorno)"
                 )
                 continue
             clasificados.append({
@@ -677,64 +714,94 @@ def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
                 grupos.setdefault(key, []).append(item)
 
             # --- Verificar reglas por grupo ---
+            etiqueta = _etiqueta_acabado(dxf)
             for (orient, tipo), items in grupos.items():
                 if orient == "V":
-                    eje, eje_perp = "Y", "X"
+                    # Bisagras espaciadas en Y → el ALTO de la puerta es el eje
+                    # de las bisagras; el ANCHO es la dimensión perpendicular.
                     edge_low, edge_high = bbox["ymin"], bbox["ymax"]
                     vals = sorted(i["y"] for i in items)
+                    ancho = bbox["xmax"] - bbox["xmin"]
                 else:
-                    eje, eje_perp = "X", "Y"
                     edge_low, edge_high = bbox["xmin"], bbox["xmax"]
                     vals = sorted(i["x"] for i in items)
-                dim_pieza = edge_high - edge_low
-
-                tag_pieza = (
-                    f"{dxf.nombre} — pieza "
-                    f"{bbox['xmax'] - bbox['xmin']:.0f}×{bbox['ymax'] - bbox['ymin']:.0f}mm "
-                    f"@ ({bbox['xmin']:.0f},{bbox['ymin']:.0f}) — bisagra {tipo}"
-                )
+                    ancho = bbox["ymax"] - bbox["ymin"]
+                alto = edge_high - edge_low  # dimensión a lo largo del eje de bisagras
 
                 # Toda puerta debe tener ≥ 2 bisagras
                 if len(vals) < 2:
-                    errores.append(
-                        f"{tag_pieza}: solo 1 bisagra "
-                        f"({eje}={vals[0]:.0f}). Mínimo 2 por puerta."
-                    )
+                    prob_pocas.append(_linea_puerta(
+                        etiqueta, dxf.tablero_num, ancho, alto,
+                        f"solo 1 bisagra {tipo}, mínimo 2"))
                     continue
 
-                es_altillo_pax = (tipo == "PAX" and dim_pieza < umbral_altillo)
+                es_altillo_pax = (tipo == "PAX" and alto < umbral_altillo)
 
                 if es_altillo_pax:
-                    # Cada cazoleta a 68 mm exactos del borde más cercano
+                    # Cada cazoleta a borde_altillo mm exactos del borde más cercano
+                    desfases = []
                     for v in vals:
-                        dist_low = v - edge_low
-                        dist_high = edge_high - v
-                        nearest = min(dist_low, dist_high)
+                        nearest = min(v - edge_low, edge_high - v)
                         if abs(nearest - borde_altillo) > _EPS_FP:
-                            errores.append(
-                                f"{tag_pieza} (altillo, {dim_pieza:.0f}mm): "
-                                f"cazoleta {eje}={v:.1f} a {nearest:.1f}mm del borde "
-                                f"(esperado: {borde_altillo:.0f}mm exactos)"
-                            )
+                            desfases.append(nearest - borde_altillo)
+                    if desfases:
+                        sufijo = "desfase de " + " y ".join(_fmt_mm(d) for d in desfases)
+                        prob_altillo.append(_linea_puerta(
+                            etiqueta, dxf.tablero_num, ancho, alto, sufijo))
                 else:
                     # Distancia entre cazoletas múltiplo exacto del paso
                     paso = paso_metod if tipo == "METOD" else paso_pax
+                    desfases = []
                     for k in range(len(vals) - 1):
                         dist = round(abs(vals[k + 1] - vals[k]), 4)
                         if dist % paso != 0.0:
                             nearest_n = round(dist / paso)
-                            desv = dist - nearest_n * paso
-                            errores.append(
-                                f"{tag_pieza}: distancia {dist}mm entre cazoletas "
-                                f"{eje}={vals[k]:.0f} y {eje}={vals[k + 1]:.0f} "
-                                f"no es múltiplo de {paso}mm "
-                                f"(más cercano {nearest_n}×{paso}={nearest_n * paso}mm, "
-                                f"desv. {desv:+.1f}mm)"
-                            )
+                            desfases.append(dist - nearest_n * paso)
+                    if desfases:
+                        sufijo = "desfase de " + " y ".join(_fmt_mm(d) for d in desfases)
+                        destino = prob_metod if tipo == "METOD" else prob_pax
+                        destino.append(_linea_puerta(
+                            etiqueta, dxf.tablero_num, ancho, alto, sufijo))
 
     if not algun_tablero_con_bisagras:
         return _skip(ID, DESC, "Sin circles 7-POCKET con companion en los DXFs", _GRUPO)
-    return _resultado(ID, DESC, errores, True, _GRUPO)
+
+    # --- Construir detalle agrupado por tipo de regla ---
+    secciones = [
+        (f"Puertas METOD (distancia entre cazoletas debe ser múltiplo de {paso_metod}mm):",
+         prob_metod),
+        (f"Puertas PAX (distancia entre cazoletas debe ser múltiplo de {paso_pax}mm):",
+         prob_pax),
+        (f"Puertas PAX altillo (cazoletas a {borde_altillo:.0f}mm del borde):",
+         prob_altillo),
+        ("Puertas con menos de 2 bisagras:", prob_pocas),
+        ("Cazoletas sin pieza asignada (fuera de contorno):", prob_sin_pieza),
+    ]
+    if not any(lineas for _, lineas in secciones):
+        return _pass(ID, DESC, True, _GRUPO)
+
+    LINEAS_MAX = 15
+    detalle_lineas: list[str] = []
+    n_mostradas = 0
+    n_omitidas = 0
+    for header, lineas in secciones:
+        visibles = []
+        for ln in lineas:
+            if n_mostradas < LINEAS_MAX:
+                visibles.append(ln)
+                n_mostradas += 1
+            else:
+                n_omitidas += 1
+        if visibles:
+            detalle_lineas.append(header)
+            detalle_lineas.extend(visibles)
+    if n_omitidas:
+        detalle_lineas.append(f"… y {n_omitidas} puerta(s) más con el mismo tipo de error")
+
+    # Salto de línea con dos espacios → renderiza como salto real tanto en el
+    # informe .txt como en los st.caption (markdown hard break) de la app.
+    detalle = "  \n".join(detalle_lineas)
+    return _fail(ID, DESC, detalle, True, _GRUPO)
 
 
 # ---------------------------------------------------------------------------
