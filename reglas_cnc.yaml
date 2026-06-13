@@ -65,7 +65,10 @@ excepciones:
 
   - patron: "enviar en estructura {tipo}"
     tipo: ENVIO_ESTRUCTURA
-    justifica_check: C-55
+    # C-55 valida el envío en estructura contra el EXTRACCION (Estructura
+    # grande/pequeña > 0), no contra esta observación de la OT. El patrón se
+    # mantiene para que C-62/C-63 lo reconozcan; ya no justifica ningún check.
+    justifica_check: []
 
   - patron: "{id}: bisagras en posicion especial"
     tipo: BISAGRAS_ESPECIAL

@@ -189,7 +189,7 @@ GROUPS = [
             ("C-54", "Peso total EAN == OT (tolerancia máx. 2%)",
              "Suma pesos EAN = peso OT ± 2% (WARN si no)", "No"),
             ("C-55", "Modelo de envío coherente con dimensiones",
-             "Si alguna pieza > 2480 mm -> OT declara 'estructura' en observaciones", "Sí"),
+             "Si alguna pieza > 2480 mm -> EXTRACCION declara Estructura grande/pequeña > 0", "Sí"),
             ("C-56", "Código DESTINO CAJA correcto",
              "Código en PDF DESTINO CAJA = exactamente CUB-{ID_PROYECTO}", "Sí"),
         ],

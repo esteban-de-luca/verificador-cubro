@@ -341,7 +341,7 @@ def _ejecutar_checks(
     resultados.append(check_piezas_sin_duplicados(datos.filas_ean))
     resultados.append(check_formato_id_bulto(datos.filas_ean, id_proyecto))
     resultados.append(check_peso_total(datos.filas_ean, ot, reglas))
-    resultados.append(check_envio_estructura(datos.piezas, ot, reglas))
+    resultados.append(check_envio_estructura(datos.piezas, datos.extraccion, reglas))
     resultados.append(check_codigo_destino_caja(datos.codigo_destino, id_proyecto))
 
     # Texto CNC (C-60..C-63)

@@ -8,7 +8,7 @@ import pytest
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core.modelos import Pieza, OTData
+from core.modelos import Pieza, OTData, ExtraccionData
 from core.reglas_loader import cargar_reglas
 from core.extractor_etiquetas_ean import FilaEAN
 from checks.checks_bultos import (
@@ -36,11 +36,8 @@ def _pieza(id="M1-P1", ancho=400, alto=798):
     return Pieza(id, ancho, alto, "PLY", "LAM", "Pale", "P")
 
 
-def _ot(peso_total_kg=50.0, num_tiradores=0, obs_cnc=None, obs_prod=None):
-    ot = OTData("EU-21822", "Test", "Semana 18", 10, peso_total_kg, num_tiradores)
-    ot.observaciones_cnc = obs_cnc or []
-    ot.observaciones_produccion = obs_prod or []
-    return ot
+def _ot(peso_total_kg=50.0, num_tiradores=0):
+    return OTData("EU-21822", "Test", "Semana 18", 10, peso_total_kg, num_tiradores)
 
 
 # ---------------------------------------------------------------------------
@@ -247,26 +244,37 @@ class TestC54:
 class TestC55:
 
     def test_pass_piezas_pequenas(self, reglas):
+        # Pieza por debajo del umbral (2480mm) → no necesita estructura.
         piezas = [_pieza(ancho=400, alto=700)]
-        ot = _ot()
-        r = check_envio_estructura(piezas, ot, reglas)
+        r = check_envio_estructura(piezas, ExtraccionData(), reglas)
         assert r.resultado == "PASS"
 
     def test_fail_pieza_grande_sin_estructura(self, reglas):
-        piezas = [_pieza(ancho=400, alto=900)]  # 900 > 780 umbral
-        ot = _ot()  # sin mención de estructura
-        r = check_envio_estructura(piezas, ot, reglas)
+        piezas = [_pieza(ancho=400, alto=2700)]  # 2700 > 2480 umbral
+        extr = ExtraccionData(estructura_grande=0, estructura_pequena=0)
+        r = check_envio_estructura(piezas, extr, reglas)
         assert r.resultado == "FAIL"
         assert r.bloquea
 
-    def test_pass_pieza_grande_con_estructura_declarada(self, reglas):
-        piezas = [_pieza(ancho=400, alto=900)]
-        ot = _ot(obs_cnc=["Envío en estructura"])
-        r = check_envio_estructura(piezas, ot, reglas)
+    def test_pass_pieza_grande_con_estructura_grande(self, reglas):
+        piezas = [_pieza(ancho=400, alto=2700)]
+        extr = ExtraccionData(estructura_grande=1)
+        r = check_envio_estructura(piezas, extr, reglas)
+        assert r.resultado == "PASS"
+
+    def test_pass_pieza_grande_con_estructura_pequena(self, reglas):
+        piezas = [_pieza(ancho=400, alto=2700)]
+        extr = ExtraccionData(estructura_pequena=1)
+        r = check_envio_estructura(piezas, extr, reglas)
         assert r.resultado == "PASS"
 
     def test_skip_sin_piezas(self, reglas):
-        r = check_envio_estructura([], _ot(), reglas)
+        r = check_envio_estructura([], ExtraccionData(), reglas)
+        assert r.resultado == "SKIP"
+
+    def test_skip_sin_extraccion(self, reglas):
+        piezas = [_pieza(ancho=400, alto=2700)]
+        r = check_envio_estructura(piezas, None, reglas)
         assert r.resultado == "SKIP"
 
 
