@@ -8,13 +8,14 @@ Inputs:
     reglas: dict              — cargado por reglas_loader
     n_bultos_pdf: int | None  — de PDF BULTOS/ALBARÁN (None → SKIP comparación PDF)
     codigo_destino: str | None — de PDF DESTINO CAJA (None → SKIP C-56)
+    extraccion: ExtraccionData | None — del CSV EXTRACCION (None → SKIP C-55)
 """
 
 from __future__ import annotations
 
 import re
 
-from core.modelos import CheckResult, OTData, Pieza
+from core.modelos import CheckResult, ExtraccionData, OTData, Pieza
 from core.extractor_etiquetas_ean import FilaEAN
 from checks._helpers import (
     _pass, _fail, _warn, _skip, _resultado, _norm_id, _id_coincide_proyecto,
@@ -170,31 +171,34 @@ def check_peso_total(
 # ---------------------------------------------------------------------------
 
 def check_envio_estructura(
-    piezas: list[Pieza], ot: OTData, reglas: dict
+    piezas: list[Pieza], extr: ExtraccionData | None, reglas: dict
 ) -> CheckResult:
     """
     C-55: Si alguna pieza supera el umbral de dimensión para paquetería estándar,
-    el envío debe ser en estructura (indicado en OT).
+    el EXTRACCION debe contemplar envío en estructura: 'Estructura grande' o
+    'Estructura pequeña' con cantidad > 0.
     Bloquea: Sí.
     """
+    desc = "Modelo envío coherente con dimensiones"
     if not piezas:
-        return _skip("C-55", "Modelo envío coherente con dimensiones", "Sin piezas", _GRUPO)
+        return _skip("C-55", desc, "Sin piezas", _GRUPO)
+    if extr is None:
+        return _skip("C-55", desc, "EXTRACCION ausente (C-00 reporta el fallo)", _GRUPO)
 
     umbral_mm: int = reglas["logistica"]["estructura_umbral_mm"]
     max_dim = max(max(p.ancho, p.alto) for p in piezas)
 
     necesita_estructura = max_dim > umbral_mm
-    declara_estructura = any(
-        "estructura" in obs.lower() for obs in ot.observaciones_cnc + ot.observaciones_produccion
-    )
+    declara_estructura = extr.estructura_grande > 0 or extr.estructura_pequena > 0
 
     if necesita_estructura and not declara_estructura:
         return _fail(
-            "C-55", "Modelo envío coherente con dimensiones",
-            f"Pieza de {max_dim}mm > umbral {umbral_mm}mm pero OT no declara envío en estructura",
+            "C-55", desc,
+            f"Pieza de {max_dim}mm > umbral {umbral_mm}mm pero EXTRACCION no "
+            f"contempla envío en estructura (Estructura grande/pequeña = 0)",
             True, _GRUPO,
         )
-    return _pass("C-55", "Modelo envío coherente con dimensiones", True, _GRUPO)
+    return _pass("C-55", desc, True, _GRUPO)
 
 
 # ---------------------------------------------------------------------------

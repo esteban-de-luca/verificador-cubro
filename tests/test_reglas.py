@@ -394,9 +394,9 @@ class TestLogistica:
         """PASS: valor por defecto es 2.0% según arquitectura."""
         assert reglas["logistica"]["tolerancia_peso_porcentaje"] == 2.0
 
-    def test_umbral_estructura_es_780(self, reglas):
-        """PASS: umbral de estructura definido en 780mm."""
-        assert reglas["logistica"]["estructura_umbral_mm"] == 780
+    def test_umbral_estructura_es_2480(self, reglas):
+        """PASS: umbral de estructura definido en 2480mm."""
+        assert reglas["logistica"]["estructura_umbral_mm"] == 2480
 
     def test_tolerancia_negativa_rechazada_semanticamente(self, reglas):
         """FAIL semántico: la tolerancia nunca debe ser negativa."""
