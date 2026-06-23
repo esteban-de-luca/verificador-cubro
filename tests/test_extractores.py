@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 from core.modelos import CheckResult, Pieza, Bulto, OTData, DXFDoc, InformeFinal
 from core.extractor_despiece import leer_despiece, _inferir_tipologia, _normalizar
 from core.extractor_etiquetas_ean import leer_etiquetas, leer_ean
-from core.extractor_ot import leer_ot
+from core.extractor_ot import leer_ot, _extraer_semana_por_posicion
 from core.extractor_pdfs_logistica import leer_codigo_destino
 
 
@@ -720,10 +720,12 @@ class TestLeerDXFContornosPieza:
 
 class TestLeerOT:
 
-    def _pdf_mock(self, texto: str):
-        """Mock de pdfplumber que devuelve texto fijo."""
+    def _pdf_mock(self, texto: str, palabras: list[dict] | None = None):
+        """Mock de pdfplumber que devuelve texto fijo y, opcionalmente, las
+        palabras con coordenadas (para probar la extracción por posición)."""
         pagina = MagicMock()
         pagina.extract_text.return_value = texto
+        pagina.extract_words.return_value = palabras or []
         pdf = MagicMock()
         pdf.pages = [pagina]
         pdf.__enter__ = lambda s: s
@@ -772,6 +774,45 @@ class TestLeerOT:
         with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
             ot = leer_ot(io.BytesIO(b"x"))
         assert "18" in ot.semana
+
+    def test_semana_digito_desalineado_se_recupera(self):
+        """Regresión C-70 (OT EU-20868): el '7' de '27' viene 4pt más bajo que
+        el '2', así que el texto plano lo parte ('Semana 2'). La extracción por
+        posición recupera el número completo y prima sobre el regex roto."""
+        # Texto plano tal como lo entrega pdfplumber: el '7' cae a otra línea.
+        texto = "EU-20868\nSemana 2\nTaller Carpintek 7\n"
+        # Palabras con coordenadas: '2' alineado con la etiqueta, '7' 4pt abajo.
+        palabras = [
+            {"text": "Semana", "x0": 364.8, "x1": 460.6, "top": 106.3, "bottom": 131.3},
+            {"text": "2",      "x0": 474.9, "x1": 488.8, "top": 106.3, "bottom": 131.3},
+            {"text": "7",      "x0": 488.8, "x1": 502.7, "top": 110.4, "bottom": 135.4},
+        ]
+        with patch("core.extractor_ot.pdfplumber.open",
+                   return_value=self._pdf_mock(texto, palabras)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.semana == "Semana 27"
+
+    def test_semana_por_posicion_caso_limpio(self):
+        """Caso normal (número alineado): se reconstruye igual por posición."""
+        palabras = [[
+            {"text": "Semana", "x0": 365.0, "x1": 449.0, "top": 106.0, "bottom": 131.0},
+            {"text": "18",     "x0": 460.0, "x1": 488.0, "top": 106.0, "bottom": 131.0},
+        ]]
+        assert _extraer_semana_por_posicion(palabras) == "Semana 18"
+
+    def test_semana_por_posicion_no_captura_numero_lejano(self):
+        """Un número con un salto horizontal grande (otro campo) no se agrega."""
+        palabras = [[
+            {"text": "Semana", "x0": 365.0, "x1": 449.0, "top": 106.0, "bottom": 131.0},
+            {"text": "3",      "x0": 455.0, "x1": 469.0, "top": 106.0, "bottom": 131.0},
+            {"text": "8",      "x0": 495.0, "x1": 509.0, "top": 106.0, "bottom": 131.0},
+        ]]
+        assert _extraer_semana_por_posicion(palabras) == "Semana 3"
+
+    def test_semana_por_posicion_sin_etiqueta(self):
+        """Sin etiqueta 'Semana' devuelve '' (cae al fallback del regex)."""
+        palabras = [[{"text": "OtraCosa", "x0": 0.0, "x1": 50.0, "top": 0.0, "bottom": 10.0}]]
+        assert _extraer_semana_por_posicion(palabras) == ""
 
     def test_extrae_tiradores(self):
         """PASS: 'Tiradores: 8' extraído."""

@@ -178,20 +178,93 @@ _GAMA_NOMBRE_A_CODIGO: dict[str, str] = {
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _extraer_texto(bytesio_o_path: BinaryIO | Path | str) -> str:
-    """Extrae todo el texto del PDF concatenando todas las páginas."""
+def _extraer_texto(
+    bytesio_o_path: BinaryIO | Path | str,
+) -> tuple[str, list[list[dict]]]:
+    """Extrae el texto plano del PDF y las palabras con coordenadas.
+
+    Devuelve (texto, palabras_paginas):
+      - texto: todas las páginas concatenadas (extract_text, x_tolerance=2).
+      - palabras_paginas: una lista por página con las palabras que devuelve
+        pdfplumber ({text, x0, x1, top, bottom, …}). Se usan para reconstruir
+        campos cuyo glifo viene desalineado verticalmente en la plantilla y que
+        la agrupación por líneas parte (ver _extraer_semana_por_posicion).
+
+    Texto y palabras se obtienen en la misma pasada porque el origen puede ser
+    un BytesIO que solo se puede leer una vez.
+    """
     if isinstance(bytesio_o_path, (str, Path)):
         ctx = pdfplumber.open(str(bytesio_o_path))
     else:
         ctx = pdfplumber.open(bytesio_o_path)
 
     partes: list[str] = []
+    palabras_paginas: list[list[dict]] = []
     with ctx as pdf:
         for pagina in pdf.pages:
             texto = pagina.extract_text(x_tolerance=2)
             if texto:
                 partes.append(texto)
-    return "\n\n".join(partes)
+            palabras_paginas.append(pagina.extract_words(x_tolerance=1) or [])
+    return "\n\n".join(partes), palabras_paginas
+
+
+#: Holgura vertical (pt) para asociar un dígito a la etiqueta "Semana" aunque
+#: su glifo venga desalineado. La plantilla de OT renderiza a veces un dígito
+#: ~4pt por debajo del resto, lo que rompe la agrupación por líneas de
+#: pdfplumber y parte el número (caso real EU-20868: "27" se leía como "2").
+_BANDA_SEMANA_PT = 8.0
+#: Ventana horizontal (pt) a la derecha de la etiqueta donde buscar el número.
+_VENTANA_SEMANA_PT = 60.0
+#: Salto horizontal (pt) que se interpreta como inicio de otro campo: corta la
+#: acumulación de dígitos para no capturar números ajenos a la semana.
+_GAP_SEMANA_PT = 20.0
+
+
+def _extraer_semana_por_posicion(palabras_paginas: list[list[dict]]) -> str:
+    """Reconstruye 'Semana NN' por posición de las palabras del PDF.
+
+    pdfplumber agrupa el texto en líneas con poca holgura vertical; si un dígito
+    de la semana se renderiza unos puntos más bajo (visto en OT EU-20868: el '7'
+    de '27' a 4pt por debajo del '2'), queda fuera de la línea de "Semana" y el
+    regex sobre texto plano solo lee el primer dígito.
+
+    Aquí localizamos la etiqueta "Semana" y concatenamos, en orden de X, los
+    dígitos de las palabras a su derecha dentro de una banda vertical, cortando
+    ante un salto horizontal grande (otro campo). Devuelve "" si no la encuentra.
+    """
+    for palabras in palabras_paginas:
+        label = next(
+            (w for w in palabras if w["text"].strip().lower() == "semana"),
+            None,
+        )
+        if label is None:
+            continue
+        centro = (label["top"] + label["bottom"]) / 2
+        candidatos = sorted(
+            (
+                w for w in palabras
+                if w["x0"] >= label["x1"] - 2
+                and w["x0"] <= label["x1"] + _VENTANA_SEMANA_PT
+                and abs((w["top"] + w["bottom"]) / 2 - centro) <= _BANDA_SEMANA_PT
+            ),
+            key=lambda w: w["x0"],
+        )
+        digitos = ""
+        x_prev: float | None = None
+        for w in candidatos:
+            d = "".join(ch for ch in w["text"] if ch.isdigit())
+            if not d:
+                if digitos:
+                    break          # palabra no numérica tras el número → fin
+                continue           # ruido antes del número → ignorar
+            if x_prev is not None and w["x0"] - x_prev > _GAP_SEMANA_PT:
+                break              # salto grande → empieza otro campo
+            digitos += d
+            x_prev = w["x1"]
+        if digitos:
+            return f"Semana {digitos}"
+    return ""
 
 
 def _float_limpio(texto: str) -> float:
@@ -272,7 +345,7 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
         tienen valores por defecto (0, "", []) para que los checks puedan
         detectar su ausencia sin lanzar excepciones.
     """
-    texto = _extraer_texto(origen)
+    texto, palabras_paginas = _extraer_texto(origen)
 
     # ID de proyecto
     m_id = _RE_ID_PROYECTO.search(texto)
@@ -282,9 +355,13 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
     m_cliente = _RE_CLIENTE.search(texto)
     cliente = m_cliente.group(1).strip() if m_cliente else ""
 
-    # Semana
-    m_semana = _RE_SEMANA.search(texto)
-    semana = m_semana.group(1).strip() if m_semana else ""
+    # Semana — se reconstruye por posición de palabras (robusto a glifos
+    # desalineados en la plantilla, que parten el número en el texto plano);
+    # si no se localiza la etiqueta, se cae al regex sobre el texto.
+    semana = _extraer_semana_por_posicion(palabras_paginas)
+    if not semana:
+        m_semana = _RE_SEMANA.search(texto)
+        semana = m_semana.group(1).strip() if m_semana else ""
 
     # Nº piezas
     m_piezas = _RE_NUM_PIEZAS.search(texto)

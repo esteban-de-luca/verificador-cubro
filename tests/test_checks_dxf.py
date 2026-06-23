@@ -834,6 +834,35 @@ class TestC44:
         assert "+3" in r.detalle
         assert "PAX" in r.detalle
 
+    def test_pass_pax_ruido_coma_flotante(self, reglas):
+        # Regresión: distancia 928.0029mm = 29×32 + 2.9 micras de ruido del CAM
+        # (cazoleta exportada a X=1114.5029 tras una rotación). Antes, la
+        # tolerancia cero la marcaba FAIL mostrando "desfase de +0mm"; con la
+        # tolerancia _TOL_PASO (0.1mm) debe PASAR.
+        circs = [
+            _circulo(L7,  186.5,    -1093.7),
+            _circulo(L7, 1114.5029, -1093.7),  # 928.0029mm: ruido sub-0.1mm
+            _circulo(L6P, 164.0,    -1084.6, r=2.5),
+            _circulo(L6P,1092.0029, -1084.6, r=2.5),
+        ]
+        r = check_distancia_bisagras([_dxf_con_circulos(circs)], reglas)
+        assert r.resultado == "PASS"
+
+    def test_fail_pax_horizontal_1mm_no_se_tolera(self, reglas):
+        # Un grupo de bisagras 1mm fuera de la rejilla (927mm en vez de
+        # 29×32=928) debe seguir siendo FAIL: la tolerancia solo absorbe ruido
+        # del CAM (micras), nunca un error real de colocación.
+        circs = [
+            _circulo(L7,  186.5,  -1093.7),
+            _circulo(L7, 1113.5,  -1093.7),  # 927mm → desfase -1mm
+            _circulo(L6P, 164.0,  -1084.6, r=2.5),
+            _circulo(L6P,1091.0,  -1084.6, r=2.5),
+        ]
+        r = check_distancia_bisagras([_dxf_con_circulos(circs)], reglas)
+        assert r.resultado == "FAIL"
+        assert "-1" in r.detalle
+        assert "PAX" in r.detalle
+
     def test_id_check(self, reglas):
         r = check_distancia_bisagras([], reglas)
         assert r.id == "C-44"
