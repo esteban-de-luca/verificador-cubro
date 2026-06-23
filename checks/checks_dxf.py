@@ -503,14 +503,23 @@ def check_layers_desuso(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
 # - PAX altillo (pieza < 700 mm): cada cazoleta a 68 mm exactos del borde.
 # - Pieza con 1 sola cazoleta: FAIL (toda puerta debe tener ≥ 2 bisagras).
 #
-# Tolerancia: cero en todos los casos. EPS interno solo absorbe ruido
-# numérico de coma flotante en las coordenadas DXF.
+# Tolerancia: _TOL_PASO (0.1 mm) en las comprobaciones de distancia/posición.
+# Absorbe el ruido de coma flotante que el CAM deja en las coordenadas DXF
+# (típicamente micras, p. ej. una cazoleta exportada a 1117.0029 mm tras una
+# rotación) sin enmascarar desviaciones reales de diseño (≥ 0.1 mm = error).
 # ---------------------------------------------------------------------------
 
 import math as _math
 
 #: Tolerancia para ruido de coma flotante en coordenadas DXF (1 micra).
 _EPS_FP = 1e-3
+
+#: Tolerancia (mm) para comparar distancias entre cazoletas con su múltiplo
+#: del paso (y la posición al borde en altillo). Filtra el ruido del CAM en
+#: las coordenadas DXF (micras) pero no un error real de colocación. Un desfase
+#: de 1 mm — p. ej. un grupo de bisagras 1 mm fuera de la rejilla de 32 — sigue
+#: detectándose como FAIL.
+_TOL_PASO = 0.1
 
 
 def _bisagra_nearest(cx: float, cy: float, pool: list[dict]) -> tuple[dict | None, float]:
@@ -738,25 +747,30 @@ def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
                 es_altillo_pax = (tipo == "PAX" and alto < umbral_altillo)
 
                 if es_altillo_pax:
-                    # Cada cazoleta a borde_altillo mm exactos del borde más cercano
+                    # Cada cazoleta a borde_altillo mm del borde más cercano
+                    # (± _TOL_PASO para absorber ruido de coma flotante).
                     desfases = []
                     for v in vals:
                         nearest = min(v - edge_low, edge_high - v)
-                        if abs(nearest - borde_altillo) > _EPS_FP:
+                        if abs(nearest - borde_altillo) > _TOL_PASO:
                             desfases.append(nearest - borde_altillo)
                     if desfases:
                         sufijo = "desfase de " + " y ".join(_fmt_mm(d) for d in desfases)
                         prob_altillo.append(_linea_puerta(
                             etiqueta, dxf.tablero_num, ancho, alto, sufijo))
                 else:
-                    # Distancia entre cazoletas múltiplo exacto del paso
+                    # Distancia entre cazoletas múltiplo del paso (± _TOL_PASO).
+                    # Se compara el desvío respecto al múltiplo más cercano con
+                    # la tolerancia, en vez de exigir resto exacto cero: así un
+                    # 928.0029 mm (ruido del CAM) no dispara un FAIL espurio,
+                    # pero un 927 mm (1 mm real) sí.
                     paso = paso_metod if tipo == "METOD" else paso_pax
                     desfases = []
                     for k in range(len(vals) - 1):
-                        dist = round(abs(vals[k + 1] - vals[k]), 4)
-                        if dist % paso != 0.0:
-                            nearest_n = round(dist / paso)
-                            desfases.append(dist - nearest_n * paso)
+                        dist = abs(vals[k + 1] - vals[k])
+                        desf = dist - round(dist / paso) * paso
+                        if abs(desf) > _TOL_PASO:
+                            desfases.append(desf)
                     if desfases:
                         sufijo = "desfase de " + " y ".join(_fmt_mm(d) for d in desfases)
                         destino = prob_metod if tipo == "METOD" else prob_pax
