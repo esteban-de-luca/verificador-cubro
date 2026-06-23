@@ -541,11 +541,30 @@ def _panel_accion(proyecto: dict, informe: InformeFinal) -> None:
         estado_drive = proyecto.get("estado", "PENDIENTE")
 
         if estado_drive == "OK_MANUAL":
-            st.success(
-                f"Override manual aplicado: la carpeta aparece como [OK - MANUAL]. "
-                f"El resultado real de la verificación sigue siendo {estado_informe}.",
-                icon="✅",
-            )
+            if estado_informe == "OK":
+                # La verificación automática ahora da OK: permitir consolidar el
+                # override manual a un OK real (p. ej. tras reponer stock o
+                # corregir el fichero que en su día motivó el override manual).
+                st.info(
+                    "La carpeta tiene un override manual [OK - MANUAL], pero la "
+                    "verificación automática ahora da **OK**. Puedes consolidar el "
+                    "estado a [OK].",
+                    icon="🟢",
+                )
+                if st.button(
+                    "Aplicar [OK] en Drive",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    _modal_aplicar_estado(
+                        folder_id, nombre_actual, nombre_limpio, "OK"
+                    )
+            else:
+                st.success(
+                    f"Override manual aplicado: la carpeta aparece como [OK - MANUAL]. "
+                    f"El resultado real de la verificación sigue siendo {estado_informe}.",
+                    icon="✅",
+                )
         else:
             if estado_drive == estado_informe:
                 st.success(
