@@ -51,8 +51,15 @@ RESPONSABLES: list[str] = ["Esteban", "Javier", "Lucia", "Isabel", "Marina"]
 #: ID fijo de la base de datos de Notion "Log Verificaciones Ficheros de Corte".
 NOTION_DB_ID: str = "344f687d-1343-80c0-9b63-000b2d119814"
 
-#: Scopes OAuth requeridos por la Service Account para operar sobre Drive.
-DRIVE_SCOPES: list[str] = ["https://www.googleapis.com/auth/drive"]
+#: Scopes OAuth de la Service Account. Se usan para construir TODOS los
+#: servicios Google (Drive y Sheets) con las MISMAS credenciales — el
+#: Verificador no crea credenciales adicionales. El scope `spreadsheets` es
+#: necesario para que sheets_writer registre cada verificación en el Sheet de
+#: log que lee el dashboard.
+DRIVE_SCOPES: list[str] = [
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/spreadsheets",
+]
 
 #: ID de la carpeta de Drive donde se almacenan los CSV de exportación a
 #: HubSpot. Cada proyecto debe tener un CSV nombrado exactamente
@@ -178,3 +185,30 @@ def notion_token() -> str:
             "NOTION_TOKEN no configurado en Streamlit Secrets ni en entorno"
         )
     return valor
+
+
+# ---------------------------------------------------------------------------
+# Google Sheets — Log de verificaciones (lo lee el dashboard externo)
+# ---------------------------------------------------------------------------
+
+#: ID por defecto del Google Sheet "Log Verificaciones Ficheros de Corte".
+#: Se puede sobreescribir con la env var / secret LOG_VERIF_SHEET_ID (ver
+#: README) para apuntar a otro libro sin tocar código.
+LOG_VERIF_SHEET_ID_DEFAULT: str = "1QRLtjFItXH-pYHJ4y3l0hEyaZ4cXfAxBS5M7PICtT_w"
+
+#: Nombre de pestaña por defecto dentro del Sheet de log. Override con
+#: LOG_VERIF_TAB. Si la pestaña configurada no existe, sheets_writer cae a la
+#: primera hoja del libro (ver sheets_writer.append_verificacion).
+LOG_VERIF_TAB_DEFAULT: str = "Log"
+
+
+def log_verif_sheet_id() -> str:
+    """ID del Google Sheet de log de verificaciones (env var > default)."""
+    valor = _get_secret("sheets", "LOG_VERIF_SHEET_ID", "LOG_VERIF_SHEET_ID")
+    return valor or LOG_VERIF_SHEET_ID_DEFAULT
+
+
+def log_verif_tab() -> str:
+    """Nombre de la pestaña destino dentro del Sheet de log (env var > default)."""
+    valor = _get_secret("sheets", "LOG_VERIF_TAB", "LOG_VERIF_TAB")
+    return valor or LOG_VERIF_TAB_DEFAULT
