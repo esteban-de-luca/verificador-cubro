@@ -111,7 +111,7 @@ def _chip(texto: str, color: str) -> str:
 def _url_drive(folder_id: str) -> str:
     return f"https://drive.google.com/drive/folders/{folder_id}"
 
-def _subir_informe_drive(informe: InformeFinal, proyecto: dict) -> None:
+def _subir_informe_drive(informe: InformeFinal, proyecto: dict) -> str:
     """Sube (o sobreescribe) el informe .txt en dos sitios:
 
     1. La carpeta del proyecto (registro junto a los ficheros de corte).
@@ -120,14 +120,20 @@ def _subir_informe_drive(informe: InformeFinal, proyecto: dict) -> None:
     En ambos casos, si ya existe un informe con el mismo nombre, se
     sobreescribe — así una segunda verificación del mismo proyecto deja
     siempre la versión más reciente.
+
+    Returns:
+        El enlace (webViewLink) al informe en la carpeta del proyecto, o ""
+        si la subida falló. Se usa para la columna link_informe del Sheet.
     """
     from drive.gestor import subir_informe_txt
     nombre_proyecto = proyecto["nombre_limpio"]
     nombre_archivo = f"informe_{nombre_proyecto}.txt"
     txt = _informe_a_texto(informe, nombre_proyecto)
 
+    link_informe = ""
     try:
-        subir_informe_txt(get_servicio(), proyecto["id"], nombre_archivo, txt)
+        meta = subir_informe_txt(get_servicio(), proyecto["id"], nombre_archivo, txt)
+        link_informe = meta.get("webViewLink", "")
         st.toast(f"Informe guardado en Drive: {nombre_archivo}", icon="📄")
     except Exception as exc:
         st.toast(f"No se pudo guardar en Drive: {exc}", icon="⚠️")
@@ -143,6 +149,8 @@ def _subir_informe_drive(informe: InformeFinal, proyecto: dict) -> None:
     except Exception as exc:
         st.toast(f"No se pudo archivar en carpeta central: {exc}", icon="⚠️")
 
+    return link_informe
+
 
 def _log_notion(informe: InformeFinal) -> None:
     """Registra el informe en Notion; falla silenciosamente si Notion no está configurado."""
@@ -154,6 +162,20 @@ def _log_notion(informe: InformeFinal) -> None:
         st.toast(f"Notion: {informe.estado_global} registrado", icon="📋")
     except Exception as exc:
         st.toast(f"Notion no disponible: {exc}", icon="⚠️")
+
+
+def _log_sheet(informe: InformeFinal, link_informe: str = "") -> None:
+    """Registra una fila de la verificación en el Google Sheet de log.
+
+    Falla silenciosamente (solo toast) para que un problema con el Sheet nunca
+    interrumpa la verificación ni el resto del flujo.
+    """
+    try:
+        from sheets_writer import append_verificacion
+        append_verificacion(informe, link_informe=link_informe)
+        st.toast("Registrado en el Sheet de log", icon="📊")
+    except Exception as exc:
+        st.toast(f"Sheet de log no disponible: {exc}", icon="⚠️")
 
 
 # Formatos de ID en nombre de carpeta:
@@ -680,7 +702,8 @@ def page_verificar() -> None:
                 )
                 st.session_state.informe = informe
                 _log_notion(informe)
-                _subir_informe_drive(informe, proyecto)
+                link_informe = _subir_informe_drive(informe, proyecto)
+                _log_sheet(informe, link_informe)
             except Exception as exc:
                 st.error(f"Error durante la verificación: {exc}")
                 st.exception(exc)

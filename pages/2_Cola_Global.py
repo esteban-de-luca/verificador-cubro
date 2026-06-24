@@ -27,6 +27,7 @@ from drive.cliente import obtener_credenciales
 from drive.navegador import listar_semanas, listar_proyectos
 from drive.gestor import aplicar_prefijo_estado
 from engine import verificar_proyecto
+from sheets_writer import append_verificacion
 
 _ROOT = Path(__file__).parent.parent
 from app import (
@@ -416,6 +417,9 @@ def _verificar_cola(seleccionados: list[dict], progress_ph: Any) -> None:
         barra = st.progress(0, text="Iniciando…")
         contenedor_estado = st.empty()
 
+    n_sheet_fail = 0
+    ultimo_sheet_error = ""
+
     for i, proyecto in enumerate(seleccionados):
         nombre = proyecto["nombre_limpio"]
         barra.progress(i / n, text=f"({i+1}/{n}) {nombre}")
@@ -436,6 +440,14 @@ def _verificar_cola(seleccionados: list[dict], progress_ph: Any) -> None:
                 "informe": informe,
                 "error": None,
             })
+            # Registra cada verificación en el Sheet de log. La cola no sube el
+            # informe .txt a Drive, así que enlazamos a la carpeta del proyecto.
+            # Falla silenciosamente para no interrumpir el lote.
+            try:
+                append_verificacion(informe, link_informe=_url_drive(proyecto["id"]))
+            except Exception as exc:
+                n_sheet_fail += 1
+                ultimo_sheet_error = str(exc)
         except Exception as exc:
             st.session_state.cola_resultados.append({
                 "proyecto": proyecto,
@@ -445,6 +457,13 @@ def _verificar_cola(seleccionados: list[dict], progress_ph: Any) -> None:
 
     barra.progress(1.0, text="✓ Completado")
     contenedor_estado.empty()
+
+    if n_sheet_fail:
+        st.toast(
+            f"{n_sheet_fail} verificación(es) no registradas en el Sheet de log "
+            f"({ultimo_sheet_error})",
+            icon="⚠️",
+        )
 
     ids_verificados = {p["id"] for p in seleccionados}
     for pid in ids_verificados:
