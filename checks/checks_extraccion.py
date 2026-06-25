@@ -24,7 +24,10 @@ import unicodedata
 
 from core.modelos import CheckResult, ExtraccionData, OTData, Pieza
 from core.extractor_extraccion import cod_tab_a_clave_canonica
-from checks._helpers import _pass, _fail, _warn, _skip, _resultado, _es_incidencia
+from checks._helpers import (
+    _pass, _fail, _warn, _skip, _resultado, _es_incidencia,
+    _modelo_tirador_es_integrado,
+)
 
 _GRUPO = "Extraccion"
 
@@ -76,15 +79,68 @@ def check_cabecera_ot(extr: ExtraccionData, ot: OTData) -> CheckResult:
 # C-71: recuentos críticos (piezas, tiradores, ventilación, tensores)
 # ---------------------------------------------------------------------------
 
-def check_recuentos_criticos(extr: ExtraccionData, ot: OTData) -> CheckResult:
-    """C-71: FAIL bloqueante. Estos son los datos que ven CNC y embalaje."""
+def _tiradores_integrados_ot(ot: OTData, reglas: dict) -> int | None:
+    """Nº de tiradores INTEGRADOS (fresados) declarados en la OT.
+
+    La EXTRACCION cuenta en 'Tiradores integrados' SOLO los tiradores fresados
+    en el panel; la OT, en cambio, totaliza en '# Tiradores' tanto integrados
+    como aplicados/sobrepuestos (Line/Inox, Bar, Superline…). Compararlos
+    directamente da un falso FAIL en proyectos con ambos tipos. Aquí aislamos
+    el subconjunto integrado para que la comparación sea homogénea.
+
+    Devuelve None cuando no se puede determinar sin ambigüedad (modelo mixto
+    'A/B' o mezcla integrados/aplicados sin recuento por columna); en ese caso
+    C-71 omite la comparación de tiradores en lugar de arriesgar un FAIL falso
+    (mismo criterio prudente que C-37).
+    """
+    integrados = {m.title() for m in reglas.get("tiradores_con_geometria_dxf", [])}
+
+    # Caso normal: la OT empareja modelo↔cantidad por columna ("Square 10 / Line 3").
+    if ot.tiradores_por_modelo:
+        total = 0
+        for modelo, n in ot.tiradores_por_modelo.items():
+            estado = _modelo_tirador_es_integrado(modelo, integrados)
+            if estado is True:
+                total += n
+            elif estado is None:
+                return None  # modelo mixto 'A/B' → no se puede repartir
+        return total
+
+    # Sin recuento por columna pero con lista de modelos: solo decidible si
+    # todos son del mismo tipo (todos integrados → total; todos aplicados → 0).
+    if ot.modelos_tiradores:
+        estados = [_modelo_tirador_es_integrado(m, integrados) for m in ot.modelos_tiradores]
+        if all(e is True for e in estados):
+            return ot.num_tiradores
+        if all(e is False for e in estados):
+            return 0
+        return None  # mezcla sin desglose → ambiguo
+
+    # La OT solo declara el total, sin modelos. Históricamente estos proyectos
+    # son de un único tirador integrado, así que comparamos contra el total
+    # (conserva la red de seguridad de C-71). Sin total → nada que comparar.
+    return ot.num_tiradores or None
+
+
+def check_recuentos_criticos(
+    extr: ExtraccionData, ot: OTData, reglas: dict,
+) -> CheckResult:
+    """C-71: FAIL bloqueante. Estos son los datos que ven CNC y embalaje.
+
+    Nota sobre tiradores: 'Tiradores integrados' (EXTRACCION) se compara contra
+    el subconjunto INTEGRADO de '# Tiradores' (OT), no contra su total — la OT
+    suma también los tiradores aplicados (ver _tiradores_integrados_ot).
+    """
     desc = "Recuentos críticos (piezas, tiradores, ventilación, tensores) ↔ OT"
     errores: list[str] = []
 
     if ot.num_piezas and extr.piezas and extr.piezas != ot.num_piezas:
         errores.append(f"Piezas: EXTRACCION {extr.piezas} ≠ OT {ot.num_piezas}")
-    if ot.num_tiradores and extr.tiradores and extr.tiradores != ot.num_tiradores:
-        errores.append(f"Tiradores: EXTRACCION {extr.tiradores} ≠ OT {ot.num_tiradores}")
+    integrados_ot = _tiradores_integrados_ot(ot, reglas)
+    if integrados_ot is not None and extr.tiradores and extr.tiradores != integrados_ot:
+        errores.append(
+            f"Tiradores integrados: EXTRACCION {extr.tiradores} ≠ OT {integrados_ot}"
+        )
     if extr.rejillas_ventilacion != ot.num_ventilacion:
         errores.append(
             f"Rejillas ventilación: EXTRACCION {extr.rejillas_ventilacion} ≠ OT {ot.num_ventilacion}"
