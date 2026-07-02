@@ -878,6 +878,25 @@ class TestLeerOT:
         assert ot.tableros.get("PLY_LAM_Pale") == 3
         assert ot.tableros.get("MDF_LAC_Blanco") == 2
 
+    def test_tableros_total_negativo_se_normaliza_a_cero(self):
+        """C1-23637: la cabecera dice 'Cantidad de tableros: -2' cuando las
+        piezas se cortan de retal. Se normaliza a 0, no a dato ausente."""
+        texto = (
+            "C1-23637\n"
+            "INFORMACION DE ENVIO\n"
+            "Cantidad de palets: 0 ud. Cantidad de tableros: -2\n"
+        )
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.num_tableros_total == 0
+
+    def test_tableros_total_no_numerico_sigue_siendo_none(self):
+        """Un valor no numérico ('-', vacío) sí es dato ausente → None."""
+        texto = "EU-21822\nCantidad de tableros: -\n"
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.num_tableros_total is None
+
     def test_extrae_tableros_acabado_con_guion_minuscula(self):
         """SP-22671: 'Rosa-baby' debe extraerse tal cual, sin .title() (que lo
         rompería a 'Rosa-Baby' y haría mismatch con naming_extraccion.csv)."""
