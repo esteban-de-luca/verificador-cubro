@@ -51,12 +51,17 @@ class CheckResult:
 
     @property
     def es_error_critico(self) -> bool:
-        """True si el check falló Y bloquea la entrada a producción."""
-        return self.resultado == "FAIL" and self.bloquea
+        """True si el check falló (FAIL o WARN) Y bloquea la entrada a producción."""
+        return self.resultado in ("FAIL", "WARN") and self.bloquea
 
     @property
     def es_advertencia(self) -> bool:
-        return self.resultado == "WARN"
+        """True si el check falló (FAIL o WARN) pero NO bloquea.
+
+        Junto con es_error_critico cubre todo check no superado: ningún
+        FAIL/WARN queda invisible para el estado global.
+        """
+        return self.resultado in ("FAIL", "WARN") and not self.bloquea
 
 
 # ---------------------------------------------------------------------------
@@ -316,9 +321,9 @@ class InformeFinal:
     @property
     def estado_global(self) -> str:
         """
-        BLOQUEADO   si hay al menos 1 check FAIL con bloquea=True.
-        ADVERTENCIAS si hay WARNs pero ningún FAIL bloqueante.
-        OK          si todos los checks son PASS o SKIP.
+        BLOQUEADO    si hay al menos 1 check FAIL/WARN con bloquea=True.
+        ADVERTENCIAS si hay FAILs/WARNs no bloqueantes.
+        OK           si todos los checks son PASS o SKIP.
         """
         if self.errores_criticos:
             return "BLOQUEADO"

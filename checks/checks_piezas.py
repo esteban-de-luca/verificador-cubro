@@ -162,7 +162,10 @@ def check_material_tablero(piezas: list[Pieza], reglas: dict) -> CheckResult:
 # ---------------------------------------------------------------------------
 
 def check_acabados(piezas: list[Pieza], reglas: dict) -> CheckResult:
-    """C-16: Acabado de cada pieza está en la lista validada de su gama. Bloquea: No."""
+    """C-16: Acabado de cada pieza está en la lista validada de su gama.
+
+    Bloquea: Sí (como WARN bloqueante).
+    """
     acabados_gama: dict[str, list[str]] = reglas["acabados"]
     errores = []
     for p in piezas:
@@ -173,7 +176,7 @@ def check_acabados(piezas: list[Pieza], reglas: dict) -> CheckResult:
         if p.acabado and _norm_acabado(p.acabado) not in lista_norm:
             errores.append(f"{p.id}: acabado '{p.acabado}' no validado para gama {p.gama}")
     return _resultado("C-16", "Acabados pertenecen a la lista validada de su gama",
-                      errores, False, _GRUPO_MATERIAL)
+                      errores, True, _GRUPO_MATERIAL, tipo_fail="WARN")
 
 
 # ---------------------------------------------------------------------------
@@ -446,13 +449,13 @@ def check_mecanizado_rodapies(piezas: list[Pieza], reglas: dict) -> CheckResult:
 
     R (rodapié estándar):
       - Permitido: vacío o 'cor.'.
-      - FAIL: cualquier otro mec. ('torn.', 'mec.', 'vent.', etc.).
+      - WARN: cualquier otro mec. ('torn.', 'mec.', 'vent.', etc.).
 
     RV (rodapié con ventilación):
       - Permitido: solo 'vent.'.
-      - FAIL: vacío o cualquier otro mec.
+      - WARN: vacío o cualquier otro mec.
 
-    Bloquea: No.
+    Bloquea: Sí (como WARN bloqueante).
     """
     errores = []
     for p in piezas:
@@ -473,7 +476,7 @@ def check_mecanizado_rodapies(piezas: list[Pieza], reglas: dict) -> CheckResult:
     return _resultado(
         "C-27",
         "Rodapiés: R solo vacío/'cor.'; RV solo 'vent.'",
-        errores, False, _GRUPO_MEC,
+        errores, True, _GRUPO_MEC, tipo_fail="WARN",
     )
 
 
