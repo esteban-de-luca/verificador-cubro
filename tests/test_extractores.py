@@ -103,14 +103,22 @@ class TestCheckResult:
         assert cr.es_error_critico
 
     def test_fail_no_bloqueante(self):
-        """PASS: FAIL con bloquea=False NO es error crítico."""
+        """PASS: FAIL con bloquea=False NO es error crítico, pero sí advertencia."""
         cr = CheckResult("C-16", "Acabado", "FAIL", "x", False, "Material")
         assert not cr.es_error_critico
+        assert cr.es_advertencia
 
     def test_warn_es_advertencia(self):
-        """PASS: WARN → es_advertencia=True."""
+        """PASS: WARN sin bloquea → es_advertencia=True."""
         cr = CheckResult("C-43", "Layer desuso", "WARN", "x", False, "DXF")
         assert cr.es_advertencia
+        assert not cr.es_error_critico
+
+    def test_warn_bloqueante_es_error_critico(self):
+        """PASS: WARN con bloquea=True → error crítico, no advertencia."""
+        cr = CheckResult("C-27", "Rodapiés", "WARN", "x", True, "Mecanizados")
+        assert cr.es_error_critico
+        assert not cr.es_advertencia
 
     def test_resultado_invalido_lanza_error(self):
         """FAIL: resultado desconocido → ValueError."""
@@ -146,6 +154,10 @@ class TestInformeFinal:
         cr_fail = CheckResult("C-15", "x", "FAIL", "error", True, "Material")
         cr_warn = CheckResult("C-43", "x", "WARN", "aviso", False, "DXF")
         assert self._informe([cr_fail, cr_warn]).estado_global == "BLOQUEADO"
+
+    def test_bloqueado_con_warn_bloqueante(self):
+        cr = CheckResult("C-27", "x", "WARN", "aviso", True, "Mecanizados")
+        assert self._informe([cr]).estado_global == "BLOQUEADO"
 
 
 class TestPieza:

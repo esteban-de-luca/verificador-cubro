@@ -47,8 +47,9 @@ def _fail(id: str, desc: str, detalle: str, bloquea: bool, grupo: str) -> CheckR
     return CheckResult(id, desc, "FAIL", detalle, bloquea, grupo)
 
 
-def _warn(id: str, desc: str, detalle: str, grupo: str) -> CheckResult:
-    return CheckResult(id, desc, "WARN", detalle, False, grupo)
+def _warn(id: str, desc: str, detalle: str, grupo: str,
+          bloquea: bool = False) -> CheckResult:
+    return CheckResult(id, desc, "WARN", detalle, bloquea, grupo)
 
 
 def _skip(id: str, desc: str, motivo: str, grupo: str) -> CheckResult:
@@ -73,5 +74,5 @@ def _resultado(
     if n > 5:
         detalle += f" (y {n - 5} más)"
     if tipo_fail == "WARN":
-        return _warn(id, desc, detalle, grupo)
+        return _warn(id, desc, detalle, grupo, bloquea)
     return _fail(id, desc, detalle, bloquea, grupo)
