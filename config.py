@@ -20,11 +20,32 @@ import streamlit as st
 
 
 def apply_sidebar_width() -> None:
-    """Fija el ancho del sidebar (23.1rem) y oculta el nav automático de Streamlit."""
+    """Fija el ancho del sidebar (23.1rem), oculta el nav automático de Streamlit
+    y compacta el espaciado vertical para que el menú y el desplegable de
+    'Semana / Incidencias' entren completos sin recortarse."""
     st.markdown(
         """<style>
         [data-testid='stSidebar'] { min-width: 23.1rem; max-width: 23.1rem; }
         [data-testid='stSidebarNav'] { display: none; }
+
+        /* --- Compactado vertical de la sidebar ---
+           Reduce el aire por defecto (padding superior, separación entre
+           widgets y márgenes de los divisores) para que el desplegable de
+           Semana / Incidencias quepa sin recorte, dejando algo de respiro
+           para que no quede apelmazado. */
+        [data-testid='stSidebar'] [data-testid='stSidebarUserContent'] {
+            padding-top: 1.25rem;
+        }
+        [data-testid='stSidebar'] [data-testid='stVerticalBlock'] {
+            gap: 0.5rem;
+        }
+        [data-testid='stSidebar'] [role='radiogroup'] {
+            gap: 0.15rem;
+        }
+        [data-testid='stSidebar'] hr {
+            margin-top: 0.55rem;
+            margin-bottom: 0.55rem;
+        }
         </style>""",
         unsafe_allow_html=True,
     )
@@ -35,7 +56,7 @@ def render_sidebar_nav() -> None:
     from pathlib import Path
     logo = Path(__file__).parent / "logo_cubro.png"
     st.sidebar.image(str(logo))
-    st.sidebar.markdown("<div style='margin-top:0.75rem;'></div>", unsafe_allow_html=True)
+    st.sidebar.markdown("<div style='margin-top:0.35rem;'></div>", unsafe_allow_html=True)
     st.sidebar.page_link("app.py", label="🔍 Verificador de Ficheros")
     st.sidebar.page_link("pages/2_Cola_Global.py", label="📋 Ficheros pendientes")
     st.sidebar.markdown("---")
