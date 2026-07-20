@@ -125,7 +125,7 @@ class TestListarResponsables:
         with patch("config.drive_cuarentena_id", return_value="root"):
             resultado = navegador.listar_responsables(servicio)
         nombres = [r["name"] for r in resultado]
-        # Orden definido por config.RESPONSABLES: Esteban, Javier, Lucia, Isabel, Marina
+        # Orden definido por config.RESPONSABLES: Esteban, Javier, Lucia, Isabel, Marina, Daniela
         assert nombres == ["Esteban", "Lucia", "Marina"]
 
     def test_devuelve_vacio_si_no_hay_subcarpetas(self):

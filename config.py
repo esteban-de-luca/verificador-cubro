@@ -46,7 +46,7 @@ def render_sidebar_nav() -> None:
 # ---------------------------------------------------------------------------
 
 #: Miembros del equipo con carpeta propia en la zona de cuarentena.
-RESPONSABLES: list[str] = ["Esteban", "Javier", "Lucia", "Isabel", "Marina"]
+RESPONSABLES: list[str] = ["Esteban", "Javier", "Lucia", "Isabel", "Marina", "Daniela"]
 
 #: ID fijo de la base de datos de Notion "Log Verificaciones Ficheros de Corte".
 NOTION_DB_ID: str = "344f687d-1343-80c0-9b63-000b2d119814"
