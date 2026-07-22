@@ -139,38 +139,86 @@ class TestC70:
 
 class TestC71:
 
-    def test_pass_todo_coincide(self):
-        r = check_recuentos_criticos(_extr(), _ot())
+    def test_pass_todo_coincide(self, reglas):
+        r = check_recuentos_criticos(_extr(), _ot(), reglas)
         assert r.resultado == "PASS"
         assert r.bloquea
 
-    def test_fail_piezas_distinto(self):
-        r = check_recuentos_criticos(_extr(piezas=4), _ot())
+    def test_fail_piezas_distinto(self, reglas):
+        r = check_recuentos_criticos(_extr(piezas=4), _ot(), reglas)
         assert r.resultado == "FAIL"
         assert "Piezas" in r.detalle
 
-    def test_fail_tiradores_distinto(self):
-        r = check_recuentos_criticos(_extr(tiradores=5), _ot())
+    def test_fail_tiradores_distinto(self, reglas):
+        """Sin desglose por modelo en la OT se compara contra el total."""
+        r = check_recuentos_criticos(_extr(tiradores=5), _ot(), reglas)
         assert r.resultado == "FAIL"
 
-    def test_fail_ventilacion_distinta(self):
-        r = check_recuentos_criticos(_extr(rejillas_ventilacion=0), _ot())
+    def test_fail_ventilacion_distinta(self, reglas):
+        r = check_recuentos_criticos(_extr(rejillas_ventilacion=0), _ot(), reglas)
         assert r.resultado == "FAIL"
         assert "ventilación" in r.detalle or "ventilacion" in r.detalle.lower()
 
-    def test_fail_tensores_discrepancia(self):
+    def test_fail_tensores_discrepancia(self, reglas):
         """OT dice False (sin tensores), EXTRACCION dice 3 (≥1)."""
-        r = check_recuentos_criticos(_extr(tensores=3), _ot(tiene_tensores=False))
+        r = check_recuentos_criticos(_extr(tensores=3), _ot(tiene_tensores=False), reglas)
         assert r.resultado == "FAIL"
 
-    def test_pass_tensores_ambos_si(self):
-        r = check_recuentos_criticos(_extr(tensores=4), _ot(tiene_tensores=True))
+    def test_pass_tensores_ambos_si(self, reglas):
+        r = check_recuentos_criticos(_extr(tensores=4), _ot(tiene_tensores=True), reglas)
         assert r.resultado == "PASS"
 
-    def test_pass_si_ot_sin_tensores_info(self):
+    def test_pass_si_ot_sin_tensores_info(self, reglas):
         """OT con tiene_tensores=None → no comparable."""
-        r = check_recuentos_criticos(_extr(tensores=3), _ot(tiene_tensores=None))
+        r = check_recuentos_criticos(_extr(tensores=3), _ot(tiene_tensores=None), reglas)
         # Los demás campos siguen coincidiendo
+        assert r.resultado == "PASS"
+
+    # --- Tiradores: integrados (EXTRACCION) vs subconjunto integrado de la OT ---
+
+    def test_pass_tiradores_integrados_con_aplicados(self, reglas):
+        """Caso real SP-22899: OT '# Tiradores 10 3' (Square integrado + Line
+        aplicado) = 13 total; EXTRACCION cuenta solo los 10 integrados → PASS."""
+        ot = _ot(
+            num_tiradores=13,
+            modelos_tiradores=["Square", "Line"],
+            tiradores_por_modelo={"Square": 10, "Line": 3},
+        )
+        r = check_recuentos_criticos(_extr(tiradores=10), ot, reglas)
+        assert r.resultado == "PASS"
+
+    def test_fail_tiradores_integrados_mismatch(self, reglas):
+        """Si los integrados no cuadran con el subconjunto integrado de la OT → FAIL."""
+        ot = _ot(
+            num_tiradores=13,
+            modelos_tiradores=["Square", "Line"],
+            tiradores_por_modelo={"Square": 10, "Line": 3},
+        )
+        r = check_recuentos_criticos(_extr(tiradores=9), ot, reglas)
+        assert r.resultado == "FAIL"
+        assert "Tiradores integrados" in r.detalle
+        assert "10" in r.detalle  # compara contra los 10 integrados, no contra 13
+
+    def test_pass_tiradores_todos_aplicados(self, reglas):
+        """OT solo con tiradores aplicados (Line) → integrados OT = 0;
+        EXTRACCION 'Tiradores integrados' = 0 → PASS."""
+        ot = _ot(
+            num_tiradores=3,
+            modelos_tiradores=["Line"],
+            tiradores_por_modelo={"Line": 3},
+        )
+        r = check_recuentos_criticos(_extr(tiradores=0), ot, reglas)
+        assert r.resultado == "PASS"
+
+    def test_pass_tiradores_modelo_mixto_no_comparable(self, reglas):
+        """Modelo mixto 'A/B' (integrado + aplicado en una sola columna) →
+        ambiguo → C-71 omite la comparación de tiradores (no FAIL)."""
+        ot = _ot(
+            num_tiradores=10,
+            modelos_tiradores=["Round/Plantea"],
+            tiradores_por_modelo={"Round/Plantea": 10},
+        )
+        r = check_recuentos_criticos(_extr(tiradores=5), ot, reglas)
         assert r.resultado == "PASS"
 
 
