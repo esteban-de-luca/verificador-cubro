@@ -372,7 +372,7 @@ def _ejecutar_checks(
             resultados.append(CheckResult(cid, desc, "SKIP", motivo, False, "Extraccion"))
     else:
         resultados.append(check_cabecera_ot(datos.extraccion, ot))
-        resultados.append(check_recuentos_criticos(datos.extraccion, ot))
+        resultados.append(check_recuentos_criticos(datos.extraccion, ot, reglas))
         resultados.append(check_logistica_envio(datos.extraccion, ot, reglas))
         resultados.append(check_metros_canto(datos.extraccion, ot, reglas))
         resultados.append(check_tableros_codificados(datos.extraccion, ot, datos.naming))

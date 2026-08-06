@@ -8,7 +8,9 @@ también reciben las piezas del DESPIECE y/o datos de la OT.
 from __future__ import annotations
 
 from core.modelos import CheckResult, DXFDoc, OTData, Pieza
-from checks._helpers import _pass, _fail, _warn, _skip, _resultado
+from checks._helpers import (
+    _pass, _fail, _warn, _skip, _resultado, _modelo_tirador_es_integrado,
+)
 
 _GRUPO = "DXF"
 
@@ -236,16 +238,11 @@ def check_layer_desbaste_tirador(
 
 def _modelo_genera_handcut(modelo: str, validos: set[str]) -> bool | None:
     """True si el modelo (o TODOS sus sub-modelos en 'A/B') generan HANDCUT.
-    False si NINGUNO. None si mixto (algunos sí y otros no → ambigüedad)."""
-    sub = [s.strip().title() for s in modelo.split("/") if s.strip()]
-    if not sub:
-        return False
-    en_lista = [s in validos for s in sub]
-    if all(en_lista):
-        return True
-    if not any(en_lista):
-        return False
-    return None
+    False si NINGUNO. None si mixto (algunos sí y otros no → ambigüedad).
+
+    Generar HANDCUT ≡ ser un tirador integrado/fresado; delega en el helper
+    compartido para mantener una única fuente de verdad (lo reusa C-71)."""
+    return _modelo_tirador_es_integrado(modelo, validos)
 
 
 def check_handcut_vs_tiradores(

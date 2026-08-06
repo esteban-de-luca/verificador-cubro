@@ -39,6 +39,33 @@ def _es_incidencia(id_proyecto: str) -> bool:
     return "-INC" in id_proyecto.upper().replace("_", "-")
 
 
+def _modelo_tirador_es_integrado(
+    modelo: str, modelos_integrados: set[str]
+) -> bool | None:
+    """Clasifica un modelo de tirador como integrado (fresado) o aplicado.
+
+    Un tirador *integrado* se fresa en el propio panel (uña/gola) y por eso
+    genera geometría HANDCUT en el DXF; un tirador *aplicado/sobrepuesto*
+    (Line/Inox, Bar, Superline, Knob…) se atornilla y no se fresa. La lista
+    `modelos_integrados` es `tiradores_con_geometria_dxf` de reglas.yaml — el
+    sistema usa "genera geometría" e "integrado" como sinónimos.
+
+    Devuelve:
+      - True  si el modelo (o TODOS sus sub-modelos en 'A/B') es integrado.
+      - False si NINGUNO lo es.
+      - None  si es mixto (algún sub-modelo integrado y otro aplicado) → ambiguo.
+    """
+    sub = [s.strip().title() for s in modelo.split("/") if s.strip()]
+    if not sub:
+        return False
+    en_lista = [s in modelos_integrados for s in sub]
+    if all(en_lista):
+        return True
+    if not any(en_lista):
+        return False
+    return None
+
+
 def _pass(id: str, desc: str, bloquea: bool, grupo: str) -> CheckResult:
     return CheckResult(id, desc, "PASS", "Correcto", bloquea, grupo)
 
