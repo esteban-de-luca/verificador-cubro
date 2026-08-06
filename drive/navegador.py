@@ -34,6 +34,18 @@ _RE_PREFIJO = re.compile(r"^\[(BLOQUEADO|ADVERTENCIAS|OK - MANUAL|OK)\]\s+")
 #: Regex para extraer el número de semana de "Semana XX".
 _RE_SEMANA = re.compile(r"Semana\s+0*(\d+)", re.IGNORECASE)
 
+#: Carpetas especiales (no semanales) dentro de la carpeta de un responsable
+#: que también contienen proyectos a verificar. Se muestran al principio del
+#: desplegable, antes de las semanas, en el orden aquí declarado. El `numero`
+#: es un centinela ≤ 0 que las mantiene *después* de cualquier semana real
+#: (numero ≥ 1) en las vistas que ordenan todo junto (p. ej. la Cola Global).
+#: El nombre se compara sin distinguir mayúsculas ni espacios sobrantes.
+#: Añadir una carpeta especial nueva es una sola línea aquí.
+_CARPETAS_ESPECIALES: list[tuple[str, int]] = [
+    ("INCIDENCIAS", 0),
+    ("ARMARIOS PAX", -1),
+]
+
 
 # ---------------------------------------------------------------------------
 # Helpers de query
@@ -128,29 +140,41 @@ def listar_responsables(servicio: Any) -> list[dict]:
 
 def listar_semanas(servicio: Any, responsable: str) -> list[dict]:
     """
-    Subcarpetas "Semana XX" e "INCIDENCIAS" dentro de la carpeta de un responsable.
-    Las semanas se ordenan de más reciente a más antigua; INCIDENCIAS aparece primero.
+    Subcarpetas de un responsable que contienen proyectos a verificar: las
+    semanales ("Semana XX") y las especiales de `_CARPETAS_ESPECIALES` (hoy
+    INCIDENCIAS y ARMARIOS PAX).
+
+    Las semanas se ordenan de más reciente a más antigua; las carpetas
+    especiales aparecen primero, en el orden de `_CARPETAS_ESPECIALES`.
 
     Returns:
-        Lista de dicts [{id, name, numero}]. Para INCIDENCIAS, numero=0.
+        Lista de dicts [{id, name, numero}]. Para las carpetas especiales el
+        `numero` es el centinela declarado en `_CARPETAS_ESPECIALES`
+        (INCIDENCIAS=0, ARMARIOS PAX=-1).
     """
     raiz_id = config.drive_cuarentena_id()
     carpeta_resp = _buscar_subcarpeta_por_nombre(servicio, raiz_id, responsable)
     if carpeta_resp is None:
         return []
 
+    numero_especial = {nombre: num for nombre, num in _CARPETAS_ESPECIALES}
     semanas: list[dict] = []
-    incidencias: dict | None = None
+    especiales: dict[str, dict] = {}
     for c in _listar_subcarpetas(servicio, carpeta_resp["id"]):
-        if c["name"].upper() == "INCIDENCIAS":
-            incidencias = {"id": c["id"], "name": c["name"], "numero": 0}
+        clave = c["name"].strip().upper()
+        if clave in numero_especial:
+            especiales[clave] = {
+                "id": c["id"], "name": c["name"], "numero": numero_especial[clave],
+            }
         else:
             m = _RE_SEMANA.match(c["name"])
             if m:
                 semanas.append({"id": c["id"], "name": c["name"], "numero": int(m.group(1))})
     semanas.sort(key=lambda s: s["numero"], reverse=True)
-    if incidencias:
-        semanas.insert(0, incidencias)
+    # Inserta las especiales al principio respetando el orden declarado.
+    for nombre, _num in reversed(_CARPETAS_ESPECIALES):
+        if nombre in especiales:
+            semanas.insert(0, especiales[nombre])
     return semanas
 
 
