@@ -161,6 +161,41 @@ class TestListarSemanas:
         with patch("config.drive_cuarentena_id", return_value="root"):
             assert navegador.listar_semanas(servicio, "Fantasma") == []
 
+    def test_carpetas_especiales_primero_y_en_orden(self):
+        """PASS: INCIDENCIAS y ARMARIOS PAX aparecen primero (en ese orden),
+        seguidas de las semanas de mayor a menor número."""
+        respuesta_resp = {"files": [{"id": "est", "name": "Esteban", "parents": ["root"]}]}
+        respuesta_semanas = {"files": [
+            {"id": "s18", "name": "Semana 18", "parents": ["est"]},
+            {"id": "pax", "name": "ARMARIOS PAX", "parents": ["est"]},
+            {"id": "s19", "name": "Semana 19", "parents": ["est"]},
+            {"id": "inc", "name": "INCIDENCIAS", "parents": ["est"]},
+        ]}
+        servicio = _hacer_servicio_mock([respuesta_resp, respuesta_semanas])
+        with patch("config.drive_cuarentena_id", return_value="root"):
+            semanas = navegador.listar_semanas(servicio, "Esteban")
+        assert [s["name"] for s in semanas] == [
+            "INCIDENCIAS", "ARMARIOS PAX", "Semana 19", "Semana 18",
+        ]
+        # ARMARIOS PAX usa un centinela negativo para quedar tras las semanas
+        # reales en las vistas que ordenan por -numero (Cola Global).
+        por_nombre = {s["name"]: s["numero"] for s in semanas}
+        assert por_nombre["INCIDENCIAS"] == 0
+        assert por_nombre["ARMARIOS PAX"] == -1
+
+    def test_armarios_pax_sin_incidencias(self):
+        """PASS: ARMARIOS PAX se incluye aunque el responsable no tenga
+        carpeta INCIDENCIAS."""
+        respuesta_resp = {"files": [{"id": "est", "name": "Esteban", "parents": ["root"]}]}
+        respuesta_semanas = {"files": [
+            {"id": "s18", "name": "Semana 18", "parents": ["est"]},
+            {"id": "pax", "name": "ARMARIOS PAX", "parents": ["est"]},
+        ]}
+        servicio = _hacer_servicio_mock([respuesta_resp, respuesta_semanas])
+        with patch("config.drive_cuarentena_id", return_value="root"):
+            semanas = navegador.listar_semanas(servicio, "Esteban")
+        assert [s["name"] for s in semanas] == ["ARMARIOS PAX", "Semana 18"]
+
 
 # ===========================================================================
 # listar_proyectos
