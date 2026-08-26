@@ -420,6 +420,158 @@ class TestC04:
         r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
         assert r.resultado == "FAIL"
 
+    def test_pass_material_con_cero_tableros_no_exige_nesting(self):
+        """EU-21868-INC real: DESPIECE con 2 combinaciones, pero la OT declara
+        '# Tableros 0' para la Laca Crema (pieza encargada a ALVIC). Solo debe
+        exigirse el PDF de nesting del Roble → PASS con 1 solo PDF."""
+        piezas = [
+            Pieza("L1", 623, 2480, "MDF", "WOO", "Roble", "L"),
+            Pieza("T1", 120, 1050, "MDF", "LAC", "Crema", "T"),
+        ]
+        nombres = [
+            "DESPIECE_EU21868INC_Philip_Gregoire.xlsx",
+            "OT_EU21868INC_Philip_Gregoire.pdf",
+            "EU21868INC_Philip_Gregoire_MDF_WOOD_ROBLE.pdf",
+        ]
+        ot = _ot(tableros={"MDF_LAC_Crema": 0, "MDF_WOO_Roble": 1},
+                 num_tableros_total=1)
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "PASS"
+
+    def test_fail_material_con_cero_tableros_sigue_exigiendo_el_resto(self):
+        """Descontar el material a 0 no debe tapar la falta del PDF del otro."""
+        piezas = [
+            Pieza("L1", 623, 2480, "MDF", "WOO", "Roble", "L"),
+            Pieza("T1", 120, 1050, "MDF", "LAC", "Crema", "T"),
+        ]
+        nombres = ["DESPIECE_EU21868INC_Philip_Gregoire.xlsx"]
+        ot = _ot(tableros={"MDF_LAC_Crema": 0, "MDF_WOO_Roble": 1},
+                 num_tableros_total=1)
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "MDF_WOO_Roble" in r.detalle
+        assert "MDF_LAC_Crema" in r.detalle  # informado como descontado
+
+    def test_fail_material_ausente_de_la_tabla_ot_sigue_exigiendo_pdf(self):
+        """Un material que la OT no declara (materiales_sin_cantidad, C-03) NO
+        se descuenta: solo se perdona el 0 explícito."""
+        piezas = [
+            Pieza("L1", 623, 2480, "MDF", "WOO", "Roble", "L"),
+            Pieza("T1", 120, 1050, "MDF", "LAC", "Crema", "T"),
+        ]
+        nombres = [
+            "DESPIECE_EU21868INC.xlsx",
+            "EU21868INC_MDF_WOOD_ROBLE.pdf",
+        ]
+        ot = _ot(tableros={"MDF_WOO_Roble": 1},
+                 materiales_sin_cantidad=["MDF_LAC_Crema"],
+                 num_tableros_total=1)
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "FAIL"
+
+    def test_skip_todos_los_materiales_a_cero(self):
+        """Si la OT declara 0 tableros para todas las combinaciones del
+        DESPIECE, no hay nesting que exigir → SKIP."""
+        piezas = [_pieza(material="MDF", gama="LAC", acabado="Crema")]
+        nombres = ["DESPIECE_SP-20742-INC.xlsx", "OT_SP-20742-INC.pdf"]
+        ot = _ot(tableros={"MDF_LAC_Crema": 0}, num_tableros_total=2)
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "SKIP"
+
+    def test_pass_sin_ot_no_descuenta_nada(self):
+        """Sin OT el check mantiene el comportamiento previo."""
+        piezas = [_pieza(material="PLY", gama="LAM", acabado="Pale")]
+        nombres = ["EU21822_Sabine_PLY_LAM_PALE.pdf"]
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, None)
+        assert r.resultado == "PASS"
+
+    # --- Cruce por combinación, no por recuento ---
+
+    def test_fail_dos_pdfs_del_mismo_material_no_tapan_el_que_falta(self):
+        """El recuento cuadra (2 PDFs, 2 combinaciones) pero ambos PDFs son del
+        mismo material: falta el nesting del otro → FAIL."""
+        piezas = [
+            _pieza(material="PLY", gama="LAM", acabado="Pale"),
+            Pieza("M2-P1", 400, 798, "MDF", "LAC", "Blanco", "P"),
+        ]
+        nombres = [
+            "EU21822_Sabine_PLY_LAMINADO_PALE_T1.pdf",
+            "EU21822_Sabine_PLY_LAMINADO_PALE_T2.pdf",
+        ]
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas)
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "MDF_LAC_Blanco" in r.detalle
+        assert "PLY_LAM_Pale" not in r.detalle  # ese sí está cubierto
+
+    def test_pass_varios_pdfs_del_mismo_material_cubren_una_combinacion(self):
+        """Un material con varios tableros genera varios PDFs; cuentan como una
+        sola combinación cubierta, no como combinaciones de más."""
+        piezas = [_pieza(material="PLY", gama="LAM", acabado="Pale")]
+        nombres = [
+            "EU21822_Sabine_PLY_LAMINADO_PALE_T1.pdf",
+            "EU21822_Sabine_PLY_LAMINADO_PALE_T2.pdf",
+            "EU21822_Sabine_PLY_LAMINADO_PALE_T3.pdf",
+        ]
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas)
+        assert r.resultado == "PASS"
+
+    def test_fail_pdf_de_material_ajeno_al_despiece(self):
+        """Un nesting de un material que el DESPIECE no usa (tablero de otro
+        proyecto en la carpeta, o acabado mal escrito) → FAIL."""
+        piezas = [_pieza(material="PLY", gama="LAM", acabado="Pale")]
+        nombres = [
+            "EU21822_Sabine_PLY_LAMINADO_PALE.pdf",
+            "EU21822_Sabine_MDF_LACA_CREMA.pdf",
+        ]
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas)
+        assert r.resultado == "FAIL"
+        assert "no está en el DESPIECE" in r.detalle
+        assert "MDF_LAC_Crema" in r.detalle
+
+    def test_fail_material_a_cero_tableros_con_nesting_generado(self):
+        """La OT declara 0 tableros para un material pero su nesting existe:
+        una de las dos cosas está mal → FAIL con mensaje propio."""
+        piezas = [
+            Pieza("L1", 623, 2480, "MDF", "WOO", "Roble", "L"),
+            Pieza("T1", 120, 1050, "MDF", "LAC", "Crema", "T"),
+        ]
+        nombres = [
+            "EU21868INC_Philip_MDF_WOOD_ROBLE.pdf",
+            "EU21868INC_Philip_MDF_LACA_CREMA.pdf",
+        ]
+        ot = _ot(tableros={"MDF_LAC_Crema": 0, "MDF_WOO_Roble": 1},
+                 num_tableros_total=1)
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "FAIL"
+        assert "0 tableros declarados en OT" in r.detalle
+        assert "MDF_LAC_Crema" in r.detalle
+
+    def test_pass_acabado_con_acento_y_separador_distintos(self):
+        """El nombre de archivo pierde el acento y cambia el separador respecto
+        al DESPIECE; no deben contar como acabados distintos."""
+        piezas = [
+            _pieza(id="A1", material="PLY", gama="LAM", acabado="Cadaqués"),
+            Pieza("A2", 400, 798, "PLY", "LAM", "Rosa-baby", "P"),
+        ]
+        nombres = [
+            "EU21822_Sabine_PLY_LAMINADO_CADAQUES.pdf",
+            "EU21822_Sabine_PLY_LAMINADO_ROSA_BABY.pdf",
+        ]
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas)
+        assert r.resultado == "PASS"
+
+    def test_fail_nombre_sin_material_legible(self):
+        """Un PDF que el clasificador da por nesting pero cuyo material no se
+        puede leer del nombre se reporta aparte, sin cubrir nada."""
+        piezas = [_pieza(material="PLY", gama="LAM", acabado="Pale")]
+        nombres = ["EU21822_Sabine_MDF.pdf"]
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas)
+        assert r.resultado == "FAIL"
+        assert "no se puede leer del nombre" in r.detalle
+        assert "PLY_LAM_Pale" in r.detalle  # sigue faltando su nesting
+
     # --- Proyectos con ID numérico de 4 dígitos (caso 4302) ---
     def test_pass_id_4_digitos(self):
         """Proyecto 4302 con un PDF nesting MDF → PASS."""
