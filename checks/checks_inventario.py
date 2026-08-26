@@ -297,9 +297,14 @@ def check_pdfs_nesting_vs_materiales(
     C-04: Debe haber un PDF de nesting por cada combinación única
     material+gama+acabado presente en el DESPIECE.
 
-    Cuando la OT declara 'Cantidad de tableros: 0' significa que el proyecto
-    se corta de retal (típico en incidencias P1/P2 con una sola pieza), no
-    hay nesting que generar y el check SKIPea.
+    Un material que la OT declara con '# Tableros: 0' no se corta de tablero
+    (pieza de retal, o encargada a un proveedor externo tipo ALVIC), así que
+    no genera nesting y su combinación se descuenta de lo esperado. Solo se
+    descuenta lo declarado como 0 explícitamente: un material ausente de la
+    tabla de la OT (ver 'materiales_sin_cantidad', C-03) sigue exigiendo PDF.
+
+    Si la OT declara 0 tableros en total, el proyecto entero se corta de retal
+    y el check SKIPea.
 
     Bloquea: Sí.
     """
@@ -313,7 +318,21 @@ def check_pdfs_nesting_vs_materiales(
             _GRUPO,
         )
 
-    combos_esperados = {p.clave_material for p in piezas}
+    combos_despiece = {p.clave_material for p in piezas}
+    sin_tablero = (
+        {c for c in combos_despiece if ot.tableros.get(c) == 0}
+        if ot is not None else set()
+    )
+    combos_esperados = combos_despiece - sin_tablero
+
+    if not combos_esperados:
+        return _skip(
+            "C-04", desc,
+            f"OT declara 0 tableros para todos los materiales del DESPIECE "
+            f"({', '.join(sorted(sin_tablero))})",
+            _GRUPO,
+        )
+
     n_pdfs_nesting = sum(
         1 for n in nombres_archivos
         if n.lower().endswith(".pdf") and _RE_NESTING_PDF.search(n)
@@ -323,9 +342,13 @@ def check_pdfs_nesting_vs_materiales(
     if n_pdfs_nesting == n_esperado:
         return _pass("C-04", desc, True, _GRUPO)
 
-    return _fail(
-        "C-04", desc,
-        f"PDFs nesting detectados: {n_pdfs_nesting} | Combinaciones DESPIECE: {n_esperado} "
-        f"({', '.join(sorted(combos_esperados))})",
-        True, _GRUPO,
+    detalle = (
+        f"PDFs nesting detectados: {n_pdfs_nesting} | Combinaciones DESPIECE: "
+        f"{n_esperado} ({', '.join(sorted(combos_esperados))})"
     )
+    if sin_tablero:
+        detalle += (
+            f" | Sin nesting por declarar 0 tableros en OT: "
+            f"{', '.join(sorted(sin_tablero))}"
+        )
+    return _fail("C-04", desc, detalle, True, _GRUPO)
