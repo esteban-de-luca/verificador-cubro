@@ -8,6 +8,7 @@ también reciben las piezas del DESPIECE y/o datos de la OT.
 from __future__ import annotations
 
 from core.modelos import CheckResult, DXFDoc, OTData, Pieza
+from core.naming_material import GAMA_DISPLAY
 from checks._helpers import _pass, _fail, _warn, _skip, _resultado
 
 _GRUPO = "DXF"
@@ -590,19 +591,13 @@ def _es_pieza_especial(
     return None
 
 
-#: Gama interna → palabra tal como aparece en el nombre del DXF (para mostrar
-#: el acabado al equipo igual que en Drive: "MDF WOOD ROBLE", "MDF LACA MARGA").
-#: Inverso de core.extractor_dxf._GAMA_ALIAS.
-_GAMA_DISPLAY = {"LAM": "LAMINADO", "LIN": "LINOLEO", "LAC": "LACA", "WOO": "WOOD"}
-
-
 def _etiqueta_acabado(dxf: DXFDoc) -> str:
     """Descriptor material+acabado legible, p. ej. 'MDF WOOD ROBLE'.
 
     Se reconstruye desde los campos ya parseados del nombre del DXF. Si el
     nombre no se pudo parsear (campos vacíos), cae al nombre completo.
     """
-    gama = _GAMA_DISPLAY.get(dxf.gama, dxf.gama)
+    gama = GAMA_DISPLAY.get(dxf.gama, dxf.gama)
     partes = [p for p in (dxf.material, gama, dxf.acabado) if p]
     return " ".join(partes).upper() if partes else dxf.nombre
 

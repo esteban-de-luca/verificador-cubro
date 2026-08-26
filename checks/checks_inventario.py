@@ -16,6 +16,7 @@ import fnmatch
 import re
 
 from core.modelos import CheckResult, DXFDoc, ExtraccionData, OTData, Pieza
+from core.naming_material import clave_comparable, parsear_material
 from checks._helpers import (
     _pass, _fail, _warn, _skip, _resultado, _norm_id, _id_coincide_proyecto,
     _RE_INC_SUFIJO,
@@ -297,6 +298,15 @@ def check_pdfs_nesting_vs_materiales(
     C-04: Debe haber un PDF de nesting por cada combinación única
     material+gama+acabado presente en el DESPIECE.
 
+    El cruce es por combinación, no por recuento: se lee el material de cada
+    nombre de PDF y se empareja con el DESPIECE. Así dos nesting del mismo
+    tablero no pueden tapar la falta del de otro material (los DXF van por
+    tablero, así que varios PDF de un mismo material son legítimos y cuentan
+    como una sola combinación cubierta). El acabado se compara ignorando
+    acentos, mayúsculas y separadores, porque el nombre de archivo escribe
+    'CADAQUES' o 'ROSA_BABY' donde el DESPIECE escribe 'Cadaqués' y
+    'Rosa-baby'.
+
     Un material que la OT declara con '# Tableros: 0' no se corta de tablero
     (pieza de retal, o encargada a un proveedor externo tipo ALVIC), así que
     no genera nesting y su combinación se descuenta de lo esperado. Solo se
@@ -333,22 +343,67 @@ def check_pdfs_nesting_vs_materiales(
             _GRUPO,
         )
 
-    n_pdfs_nesting = sum(
-        1 for n in nombres_archivos
-        if n.lower().endswith(".pdf") and _RE_NESTING_PDF.search(n)
-    )
-    n_esperado = len(combos_esperados)
+    # Clave normalizada → clave tal como la escribe el DESPIECE (para mostrar).
+    # Se indexa todo el DESPIECE, no solo lo esperado, para poder distinguir el
+    # PDF de un material a 0 tableros del PDF de un material ajeno al proyecto.
+    despiece_por_clave = {
+        clave_comparable(p.material, p.gama, p.acabado): p.clave_material
+        for p in piezas
+    }
+    esperados = {c: k for c, k in despiece_por_clave.items()
+                 if k in combos_esperados}
 
-    if n_pdfs_nesting == n_esperado:
+    nesting = [
+        n for n in nombres_archivos
+        if n.lower().endswith(".pdf") and _RE_NESTING_PDF.search(n)
+    ]
+    cubiertos: dict[str, str] = {}   # clave normalizada → material del nombre
+    no_atribuibles: list[str] = []
+    for nombre in nesting:
+        parsed = parsear_material(nombre)
+        if parsed is None:
+            no_atribuibles.append(nombre)
+        else:
+            cubiertos[clave_comparable(*parsed)] = "_".join(parsed)
+
+    faltan = sorted(esperados[c] for c in esperados.keys() - cubiertos.keys())
+    # Nesting de un material a 0 tableros: la OT dice que ese tablero no se
+    # corta, pero alguien generó su nesting. Una de las dos cosas está mal.
+    a_cero_con_pdf = sorted(
+        despiece_por_clave[c] for c in cubiertos.keys() & despiece_por_clave.keys()
+        if despiece_por_clave[c] in sin_tablero
+    )
+    # Nesting de un material que el DESPIECE no usa: tablero de otro proyecto
+    # en la carpeta, o acabado mal escrito en el nombre del PDF.
+    ajenos = sorted(cubiertos[c] for c in cubiertos.keys() - despiece_por_clave.keys())
+
+    if not faltan and not a_cero_con_pdf and not ajenos:
         return _pass("C-04", desc, True, _GRUPO)
 
-    detalle = (
-        f"PDFs nesting detectados: {n_pdfs_nesting} | Combinaciones DESPIECE: "
-        f"{n_esperado} ({', '.join(sorted(combos_esperados))})"
-    )
-    if sin_tablero:
-        detalle += (
-            f" | Sin nesting por declarar 0 tableros en OT: "
-            f"{', '.join(sorted(sin_tablero))}"
+    partes = []
+    if faltan:
+        partes.append(f"Sin PDF de nesting: {', '.join(faltan)}")
+    if a_cero_con_pdf:
+        partes.append(
+            f"Con PDF de nesting pero 0 tableros declarados en OT: "
+            f"{', '.join(a_cero_con_pdf)}"
         )
-    return _fail("C-04", desc, detalle, True, _GRUPO)
+    if ajenos:
+        partes.append(
+            f"PDF de nesting de un material que no está en el DESPIECE: "
+            f"{', '.join(ajenos)}"
+        )
+    if no_atribuibles:
+        partes.append(
+            f"PDF cuyo material no se puede leer del nombre: "
+            f"{', '.join(sorted(no_atribuibles))}"
+        )
+    # Los descontados sin incidencia propia: contexto para que cuadre el
+    # recuento de combinaciones sin repetir los ya reportados arriba.
+    descontados_ok = sorted(sin_tablero - set(a_cero_con_pdf))
+    if descontados_ok:
+        partes.append(
+            f"Sin nesting por declarar 0 tableros en OT: "
+            f"{', '.join(descontados_ok)}"
+        )
+    return _fail("C-04", desc, " | ".join(partes), True, _GRUPO)

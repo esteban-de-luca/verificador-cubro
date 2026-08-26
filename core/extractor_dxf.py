@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from core.modelos import DXFDoc
+from core.naming_material import parsear_material
 
 
 #: Encoding que Rhinoceros usa al exportar DXF.
@@ -27,28 +28,6 @@ DXF_ENCODING = "cp1252"
 
 #: Regex para extraer el número de tablero del nombre de archivo (*_T1.dxf).
 _RE_TABLERO_NUM = re.compile(r"_T(\d+)\.dxf$", re.IGNORECASE)
-
-#: Regex para el nombre completo del DXF de nesting.
-#: Soporta dos formatos:
-#:   Antiguo (underscores): EU21822_Sabine_Jennes_PLY_LAMINADO_PALE_T1.dxf
-#:   Nuevo (espacios, guión en ID): EU-21247_Daphne Zindili_MDF LACA MARGA_T1.dxf
-#: Se ancla en el keyword de material (PLY/MDF) para ser robusto al formato del prefijo.
-_RE_NOMBRE_DXF = re.compile(
-    r"(PLY|MDF)"
-    r"[ _](LAMINADO|LINOLEO|LINÓLEO|LACA|WOOD)"
-    r"[ _](.+?)"
-    r"(?:_T\d+)?\.dxf$",
-    re.IGNORECASE,
-)
-
-#: Mapa gama en nombre de archivo → código interno.
-_GAMA_ALIAS: dict[str, str] = {
-    "LAMINADO": "LAM",
-    "LINOLEO": "LIN",
-    "LINÓLEO": "LIN",
-    "LACA": "LAC",
-    "WOOD": "WOO",
-}
 
 #: Tipos de entidades que cuentan como "geometría operativa".
 _TIPOS_GEOMETRIA = frozenset({
@@ -80,14 +59,11 @@ def _parsear_nombre(nombre: str) -> tuple[str, str, str, int]:
     m_num = _RE_TABLERO_NUM.search(nombre)
     num = int(m_num.group(1)) if m_num else 0
 
-    m_nombre = _RE_NOMBRE_DXF.search(nombre)
-    if not m_nombre:
+    parsed = parsear_material(nombre)
+    if parsed is None:
         return "", "", "", num
 
-    material = m_nombre.group(1).upper()
-    gama_raw = m_nombre.group(2).upper()
-    acabado = m_nombre.group(3).replace("_", " ").title()
-    gama = _GAMA_ALIAS.get(gama_raw, gama_raw)
+    material, gama, acabado = parsed
     return material, gama, acabado, num
 
 
