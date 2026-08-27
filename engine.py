@@ -332,7 +332,7 @@ def _ejecutar_checks(
     resultados.append(check_tirantes(datos.dxfs, ot, reglas))
     resultados.append(check_layers_desuso(datos.dxfs, reglas))
     resultados.append(check_distancia_bisagras(datos.dxfs, reglas))
-    resultados.append(check_nesting_laca(datos.dxfs, reglas))
+    resultados.append(check_nesting_laca(datos.dxfs, reglas, datos.piezas, ot))
     resultados.append(check_geometria_prohibida(datos.dxfs, reglas))
 
     # Bultos (C-50..C-56)

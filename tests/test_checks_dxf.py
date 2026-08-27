@@ -1209,20 +1209,87 @@ class TestC45:
         r = check_nesting_laca([], reglas)
         assert r.resultado == "SKIP"
 
-    def test_skip_sin_dxfs_lac(self, reglas):
-        # Solo gama LAM → C-45 no aplica
+    def test_sin_dxfs_lac_y_despiece_sin_laca_pasa(self, reglas):
+        # Solo gama LAM y DESPIECE sin laca → la regla no aplica, pero el
+        # check ya no se salta: informa PASS con el motivo.
+        dxf = DXFDoc(
+            nombre="EU-99999_X_PLY_LAMINADO_PALE_T1.dxf", tablero_num=1,
+            material="PLY", gama="LAM", acabado="Pale",
+            piezas_contorno=_piezas_en_fila(3, gap=15, layer=L_CUTEXT),
+        )
+        piezas = [_pieza(gama="LAM", material="PLY", acabado="Pale")]
+        r = check_nesting_laca([dxf], reglas, piezas)
+        assert r.resultado == "PASS"
+        assert "no aplica" in r.detalle.lower()
+
+    def test_sin_dxfs_lac_sin_despiece_pasa(self, reglas):
+        # Sin DESPIECE no hay evidencia de laca en el proyecto → PASS.
         dxf = DXFDoc(
             nombre="EU-99999_X_PLY_LAMINADO_PALE_T1.dxf", tablero_num=1,
             material="PLY", gama="LAM", acabado="Pale",
             piezas_contorno=_piezas_en_fila(3, gap=15, layer=L_CUTEXT),
         )
         r = check_nesting_laca([dxf], reglas)
-        assert r.resultado == "SKIP"
+        assert r.resultado == "PASS"
 
-    def test_skip_dxf_lac_con_una_sola_pieza(self, reglas):
+    def test_despiece_con_laca_y_sin_dxf_lac_falla(self, reglas):
+        # El DESPIECE lleva MDF LAC Marga pero ningún DXF declara gama LAC:
+        # falta el nesting de laca (o su nombre no lo declara) y nadie está
+        # validando su disposición.
+        dxf = DXFDoc(
+            nombre="EU-99999_X_PLY_LAMINADO_PALE_T1.dxf", tablero_num=1,
+            material="PLY", gama="LAM", acabado="Pale",
+            piezas_contorno=_piezas_en_fila(3, gap=15, layer=L_CUTEXT),
+        )
+        piezas = [_pieza(gama="LAC", material="MDF", acabado="Marga")]
+        r = check_nesting_laca([dxf], reglas, piezas)
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "MDF_LAC_Marga" in r.detalle
+
+    def test_despiece_con_laca_a_cero_tableros_pasa(self, reglas):
+        # La OT declara 0 tableros para ese material: no se corta de tablero,
+        # así que no hay nesting que exigir (mismo criterio que C-04).
+        dxf = DXFDoc(
+            nombre="EU-99999_X_PLY_LAMINADO_PALE_T1.dxf", tablero_num=1,
+            material="PLY", gama="LAM", acabado="Pale",
+            piezas_contorno=_piezas_en_fila(3, gap=15, layer=L_CUTEXT),
+        )
+        piezas = [_pieza(gama="LAC", material="MDF", acabado="Marga")]
+        ot = OTData("EU-21822", "Test", "Semana 18", 10, 50.0, 0,
+                    tableros={"MDF_LAC_Marga": 0})
+        r = check_nesting_laca([dxf], reglas, piezas, ot)
+        assert r.resultado == "PASS"
+
+    def test_despiece_con_laca_y_dxf_sin_gama_lo_senala(self, reglas):
+        # DXF con nombre fuera de patrón: se señala como candidato al nesting
+        # de laca que falta.
+        dxf = DXFDoc(
+            nombre="tablero_1.dxf", tablero_num=1,
+            material="", gama="", acabado="",
+            piezas_contorno=_piezas_en_fila(2, gap=0, layer=L_LACA),
+        )
+        piezas = [_pieza(gama="LAC", material="MDF", acabado="Marga")]
+        r = check_nesting_laca([dxf], reglas, piezas)
+        assert r.resultado == "FAIL"
+        assert "tablero_1.dxf" in r.detalle
+
+    def test_dxf_lac_con_una_sola_pieza_pasa(self, reglas):
+        # Un solo contorno por tablero: no hay par vecino que validar, pero
+        # tampoco hay nada mal → PASS con el motivo.
         dxf = _dxf_lac("Noche", _piezas_en_fila(1, gap=0))
         r = check_nesting_laca([dxf], reglas)
-        assert r.resultado == "SKIP"
+        assert r.resultado == "PASS"
+        assert "una sola pieza" in r.detalle
+
+    def test_dxf_lac_sin_contornos_legibles_avisa(self, reglas):
+        # Tablero LAC sin contornos en ninguno de los dos layers de corte
+        # perimetral: su disposición no se puede verificar → WARN no bloqueante.
+        dxf = _dxf_lac("Noche", [_bbox(0, 400, 0, 600, layer="0_CORTAR_RODAPIE")])
+        r = check_nesting_laca([dxf], reglas)
+        assert r.resultado == "WARN"
+        assert not r.bloquea
+        assert "MDF_LACA_NOCHE" in r.detalle.upper()
 
     # --- Caso real EU-18071: 3 piezas Marga separadas 15 mm → FAIL ---
     def test_caso_real_eu18071(self, reglas):

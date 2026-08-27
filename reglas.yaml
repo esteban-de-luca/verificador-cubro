@@ -318,6 +318,10 @@ tipos_geometria:
 #   son válidos; solo se reporta cuando quedan más cerca de lo permitido.
 # La lista de acabados estándar se reutiliza de
 # layers.corte_perimetral.lac_acabados_estandar.
+# Cuando ningún DXF declara gama LAC, el check no se salta: se contrasta con el
+# DESPIECE. Si el DESPIECE lleva piezas LAC que la OT corta de tablero, falta el
+# nesting de laca (o su nombre no declara la gama) → FAIL. Si el proyecto no
+# lleva laca, la regla no aplica → PASS.
 # -----------------------------------------------------------------------------
 nesting_laca:
   # Layer del que se leen los contornos para validar la disposición.
