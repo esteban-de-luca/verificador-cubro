@@ -825,6 +825,9 @@ def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
 #     LAC deben ir SEPARADAS al menos 15 mm (gap ≥ 15 mm − EPS). Distancias
 #     mayores son válidas; solo se reporta si quedan demasiado cerca.
 # Tolerancia (ambos casos): EPS = 0.5 mm para absorber ruido floating-point.
+# Sin DXFs de gama LAC el check ya no se salta: cruza con el DESPIECE para
+# distinguir "el proyecto no lleva laca" (PASS, no aplica) de "lleva laca pero
+# su nesting no está o no declara la gama en el nombre" (FAIL bloqueante).
 # ---------------------------------------------------------------------------
 
 def _bbox_solapan(a: dict, b: dict, eje: str, fraccion_min: float) -> bool:
@@ -930,7 +933,12 @@ def check_geometria_prohibida(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     return _resultado(ID, DESC, errores, True, _GRUPO)
 
 
-def check_nesting_laca(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
+def check_nesting_laca(
+    dxfs: list[DXFDoc],
+    reglas: dict,
+    piezas: list[Pieza] | None = None,
+    ot: OTData | None = None,
+) -> CheckResult:
     """C-45: Disposición de piezas LAC en el nesting según régimen del proyecto.
 
     Régimen NO ESTÁNDAR (proyecto con ≥1 acabado LAC fuera de la lista estándar):
@@ -938,6 +946,12 @@ def check_nesting_laca(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     Régimen ESTÁNDAR (todos los acabados LAC del proyecto son estándar):
       → todas las piezas LAC separadas ≥ 15 mm (gap ≥ 15 − EPS). Gaps mayores
       son válidos.
+
+    El check no se salta cuando no hay DXFs LAC: se contrasta con el DESPIECE.
+      - DESPIECE con piezas LAC (y tableros declarados en la OT) pero ningún
+        DXF de gama LAC → FAIL: falta el nesting de laca, o su nombre no
+        declara la gama y nadie está validando su disposición.
+      - DESPIECE sin piezas LAC → PASS: la regla no aplica a este proyecto.
 
     Bloquea: Sí.
     """
@@ -962,7 +976,7 @@ def check_nesting_laca(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
 
     dxfs_lac = [d for d in dxfs if d.gama == "LAC"]
     if not dxfs_lac:
-        return _skip(ID, DESC, "Proyecto sin DXFs de gama LAC", _GRUPO)
+        return _sin_dxfs_lac(ID, DESC, dxfs, piezas or [], ot)
 
     proyecto_no_estandar = any(
         d.acabado.lower() not in lac_std for d in dxfs_lac
@@ -971,7 +985,11 @@ def check_nesting_laca(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     layer_objetivo = layer_no_std if proyecto_no_estandar else layer_std
 
     errores: list[str] = []
-    algun_par_evaluado = False
+    # DXFs LAC sin ningún contorno legible en los layers de corte perimetral:
+    # su disposición no se puede verificar (p. ej. tablero solo de rodapié, o
+    # contornos dibujados en un layer que C-35 debería haber cazado).
+    no_verificables: list[str] = []
+    n_pares = 0
 
     for dxf in dxfs_lac:
         contornos = [
@@ -987,7 +1005,11 @@ def check_nesting_laca(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
             ]
             if len(otros) >= 2:
                 contornos = otros
+        if not contornos:
+            no_verificables.append(f"{dxf.nombre} (LAC {dxf.acabado})")
+            continue
         if len(contornos) < 2:
+            # Tablero de una sola pieza: no hay par vecino que validar.
             continue
 
         # Solo comparamos VECINOS DIRECTOS — la siguiente pieza en cada
@@ -1001,7 +1023,7 @@ def check_nesting_laca(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
                                               solape_min, eps)
                 if vecino is None:
                     continue
-                algun_par_evaluado = True
+                n_pares += 1
                 # Pegado: gap debe ser ≈ 0 (±EPS). Separado: gap ≥ 15 − EPS;
                 # cualquier separación mayor es aceptable.
                 if proyecto_no_estandar:
@@ -1016,13 +1038,72 @@ def check_nesting_laca(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
                         )
                     )
 
-    if not algun_par_evaluado:
-        return _skip(
+    if errores:
+        return _resultado(ID, DESC, errores, True, _GRUPO)
+    if no_verificables:
+        # Sin errores de disposición, pero quedan tableros LAC sin contornos
+        # legibles: se avisa (no bloquea) para que nadie lea el PASS como
+        # "nesting de laca verificado al completo".
+        return _warn(
             ID, DESC,
-            "Ningún DXF LAC con ≥2 piezas vecinas para evaluar",
+            f"Sin errores en lo verificable, pero {len(no_verificables)} "
+            f"tablero(s) LAC no tienen contornos en "
+            f"'{layer_objetivo}' ni en el otro layer de corte perimetral: "
+            f"{', '.join(sorted(no_verificables))}",
             _GRUPO,
         )
-    return _resultado(ID, DESC, errores, True, _GRUPO)
+    if n_pares == 0:
+        return CheckResult(
+            ID, DESC, "PASS",
+            "Cada tablero LAC lleva una sola pieza: no hay piezas vecinas "
+            "cuya separación validar",
+            True, _GRUPO,
+        )
+    return _pass(ID, DESC, True, _GRUPO)
+
+
+def _sin_dxfs_lac(
+    id_check: str,
+    desc: str,
+    dxfs: list[DXFDoc],
+    piezas: list[Pieza],
+    ot: OTData | None,
+) -> CheckResult:
+    """Resultado de C-45 cuando ningún DXF declara gama LAC.
+
+    Sin DXF de laca la regla no se puede evaluar, pero el motivo importa: si el
+    DESPIECE lleva piezas LAC que la OT corta de tablero, falta el nesting (o
+    su nombre no declara la gama) y eso sí es un fallo bloqueante. Si el
+    proyecto no lleva laca, la regla simplemente no aplica → PASS.
+    """
+    combos_lac = {p.clave_material for p in piezas if p.gama.upper() == "LAC"}
+    # Un material con '# Tableros: 0' en la OT no se corta de tablero (retal o
+    # proveedor externo), así que no genera nesting — igual criterio que C-04.
+    if ot is not None:
+        combos_lac = {c for c in combos_lac if ot.tableros.get(c) != 0}
+
+    if not combos_lac:
+        return CheckResult(
+            id_check, desc, "PASS",
+            "No aplica: el proyecto no lleva piezas de gama LAC",
+            True, _GRUPO,
+        )
+
+    # Nombres que no declaran material+gama: candidatos a ser el nesting de
+    # laca que falta (C-02 valida la nomenclatura; aquí solo se señalan).
+    sin_gama = sorted(d.nombre for d in dxfs if not d.gama)
+    detalle = (
+        f"El DESPIECE lleva piezas de laca ({', '.join(sorted(combos_lac))}) "
+        f"pero ningún DXF declara gama LAC en su nombre, así que la "
+        f"disposición del nesting de laca (pegado vs separado 15 mm) no se "
+        f"está verificando"
+    )
+    if sin_gama:
+        detalle += (
+            f". DXFs cuyo nombre no declara material+gama: "
+            f"{', '.join(sin_gama)}"
+        )
+    return _fail(id_check, desc, detalle, True, _GRUPO)
 
 
 def _formatear_error(
