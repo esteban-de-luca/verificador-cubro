@@ -361,6 +361,20 @@ class TestC03:
         ot = _ot(tableros={"PLY_LAM_Pale": 3, "MDF_LAC_Blanco": 2})
         assert check_num_dxf_vs_ot(dxfs, ot).resultado == "PASS"
 
+    def test_pass_proyecto_integramente_de_retal(self):
+        """C1-23637 real: la OT declara 0 tableros por material (todas las
+        piezas se cortan de retal) y todos los DXFs llevan capa RETAL
+        UTILIZADO → 0 == 0, no debe fallar."""
+        dxfs = [
+            DXFDoc("C123637_X_PLY_LAM_Agave_T1.dxf", 1, "PLY", "LAM", "Agave",
+                   layers={"CUTEXT", "RETAL UTILIZADO"}),
+            DXFDoc("C123637_X_PLY_LAM_Blanco_T1.dxf", 1, "PLY", "LAM", "Blanco",
+                   layers={"CUTEXT", "RETAL UTILIZADO"}),
+        ]
+        ot = _ot(tableros={"PLY_LAM_Agave": 0, "PLY_LAM_Blanco": 0},
+                 num_tableros_total=0)
+        assert check_num_dxf_vs_ot(dxfs, ot).resultado == "PASS"
+
 
 # ---------------------------------------------------------------------------
 # C-04

@@ -400,15 +400,16 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
     # Tableros por material (tabla INFORMACION DE CORTE)
     tableros, materiales_sin_cantidad = _parsear_tabla_corte(texto)
 
-    # Cantidad total de tableros en cabecera "INFORMACION DE ENVIO"
+    # Cantidad total de tableros en cabecera "INFORMACION DE ENVIO".
+    # La plantilla de OT emite valores negativos ("Cantidad de tableros: -2",
+    # visto en C1-23637) cuando las piezas se cortan de retal: equivalen a
+    # 0 tableros nuevos, no a un dato ausente.
     m_tot = _RE_TABLEROS_TOTAL.search(texto)
+    num_tableros_total: int | None = None
     if m_tot:
         tok_tot = m_tot.group(1).strip().split()
-        num_tableros_total: int | None = (
-            int(tok_tot[0]) if tok_tot and tok_tot[0].isdigit() else None
-        )
-    else:
-        num_tableros_total = None
+        if tok_tot and re.fullmatch(r"-?\d+", tok_tot[0]):
+            num_tableros_total = max(0, int(tok_tot[0]))
 
     # Ventilación — "Rejillas de ventilación: 2 uds."
     m_vent = _RE_VENTILACION.search(texto)
