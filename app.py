@@ -17,7 +17,11 @@ import config
 from core.modelos import CheckResult, InformeFinal
 from core.reglas_loader import cargar_reglas, cargar_reglas_cnc
 from drive.cliente import obtener_servicio_drive
-from drive.navegador import listar_semanas, listar_proyectos
+from drive.navegador import (
+    listar_semanas,
+    listar_proyectos,
+    resolver_proyecto_por_carpeta,
+)
 from drive.gestor import aplicar_prefijo_estado, PREFIJOS_DEFAULT
 from engine import verificar_proyecto
 from notion_writer import NotionWriter
@@ -361,11 +365,20 @@ def _sidebar() -> dict | None:
         st.sidebar.info("Sin semanas disponibles.")
         return None
 
+    # El índice de partida respeta la semana que ya esté en sesión (la elegida
+    # antes, o la que trae el enlace del dashboard). Con `index=0` fijo, esa
+    # preselección se perdía y arrastraba consigo el proyecto: el sidebar
+    # detectaba un cambio de semana y lo ponía a None.
+    semana_en_sesion = (st.session_state.get("semana") or {}).get("id")
+    ids_semana = [s["id"] for s in semanas]
+    idx_semana = (
+        ids_semana.index(semana_en_sesion) if semana_en_sesion in ids_semana else 0
+    )
     semana_idx = st.sidebar.selectbox(
         "Semana / Incidencias",
         range(len(semanas)),
         format_func=lambda i: semanas[i]["name"],
-        index=0,
+        index=idx_semana,
         key=f"sel_semana_{responsable}",
     )
     semana_sel = semanas[semana_idx]
@@ -655,9 +668,83 @@ def _panel_accion(proyecto: dict, informe: InformeFinal) -> None:
 # Vista principal: Verificar
 # ---------------------------------------------------------------------------
 
+#: Clave de sesión que marca que el enlace del dashboard ya se ha consumido.
+_ENLACE_CONSUMIDO = "_enlace_dashboard_consumido"
+
+
+def _consumir_enlace_dashboard() -> str | None:
+    """
+    Arranca apuntado a un proyecto concreto cuando se llega desde el dashboard
+    (07/09/2026). El dashboard abre esta app con `?carpeta=<idCarpetaDrive>` y,
+    opcionalmente, `&id=<idProyecto>`.
+
+    Deja `responsable`, `semana` y `proyecto` preseleccionados en la sesión, de
+    forma que la cascada del sidebar aparece ya en su sitio y se puede seguir
+    navegando a mano desde ahí. Se consume UNA sola vez por sesión: si no, cada
+    rerun devolvería al usuario al proyecto del enlace y no podría moverse.
+
+    El ID del proyecto sigue derivándose del NOMBRE DE LA CARPETA (como cuando
+    se navega a mano), no del parámetro: ese ID es el que cruza con el badge del
+    dashboard y no queremos dos fuentes para lo mismo. El `id` de la URL se usa
+    solo para avisar si no cuadra con la carpeta.
+
+    Devuelve un mensaje de aviso para pintar en la página, o `None`.
+    """
+    if st.session_state.get(_ENLACE_CONSUMIDO):
+        return None
+
+    params = st.query_params
+    carpeta = (params.get("carpeta") or "").strip()
+    if not carpeta:
+        return None
+
+    st.session_state[_ENLACE_CONSUMIDO] = True
+
+    proyecto = resolver_proyecto_por_carpeta(get_servicio(), carpeta)
+    if proyecto is None:
+        return (
+            "El enlace del dashboard apunta a una carpeta que no existe, está "
+            "en la papelera o no pertenece a la zona de verificación. "
+            "Selecciona el proyecto a mano en el panel izquierdo."
+        )
+
+    responsable = proyecto["responsable"]
+    if responsable not in config.RESPONSABLES:
+        return (
+            f"El enlace apunta a un proyecto de «{responsable}», que no está en "
+            "la lista de responsables. Selecciónalo a mano en el panel izquierdo."
+        )
+
+    st.session_state.responsable = responsable
+    st.session_state.semana = {"id": proyecto["semana_id"], "name": proyecto["semana"]}
+    st.session_state.proyecto = {
+        k: proyecto[k] for k in ("id", "name", "estado", "nombre_limpio")
+    }
+    st.session_state.informe = None
+
+    id_pedido = (params.get("id") or "").strip().upper()
+    id_real = _extraer_id_proyecto(proyecto["nombre_limpio"])
+    if id_pedido and _normalizar_id(id_pedido) != _normalizar_id(id_real):
+        return (
+            f"Ojo: el dashboard pidió **{id_pedido}** pero la carpeta del enlace "
+            f"es de **{id_real}**. Comprueba que es el proyecto que querías antes "
+            "de verificar."
+        )
+    return None
+
+
+def _normalizar_id(valor: str) -> str:
+    """Compara IDs tolerando `_`/`-` y espacios (igual que el cruce del dashboard)."""
+    return valor.strip().upper().replace("_", "-").replace(" ", "")
+
+
 def page_verificar() -> None:
     for key in ("responsable", "semana", "proyecto", "informe"):
         st.session_state.setdefault(key, None)
+
+    aviso_enlace = _consumir_enlace_dashboard()
+    if aviso_enlace:
+        st.warning(aviso_enlace, icon="🔗")
 
     # Feedback de acciones (puede venir de un rerun tras modal)
     if msg := st.session_state.pop("_accion_ok", None):

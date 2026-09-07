@@ -424,3 +424,112 @@ class TestSubirInformeTxt:
         q = servicio.files().list.call_args.kwargs["q"]
         # El apóstrofo del nombre debe aparecer escapado dentro del query
         assert r"O\'Brien" in q
+
+
+# ===========================================================================
+# resolver_proyecto_por_carpeta — enlace directo desde el dashboard (07/09/2026)
+# ===========================================================================
+
+def _servicio_jerarquia(por_id: dict[str, dict]) -> MagicMock:
+    """Servicio mock cuyo `files().get(fileId=X)` devuelve `por_id[X]`.
+
+    Simula la jerarquía raíz → responsable → semana → proyecto: cada dict es la
+    respuesta de Drive para ese ID, con `parents` apuntando hacia arriba. Un ID
+    ausente se comporta como un 404 (la API lanza).
+    """
+    servicio = MagicMock()
+
+    def _get(fileId: str, **_kwargs):
+        req = MagicMock()
+        if fileId in por_id:
+            req.execute.return_value = por_id[fileId]
+        else:
+            req.execute.side_effect = RuntimeError("404 not found")
+        return req
+
+    servicio.files.return_value.get.side_effect = _get
+    return servicio
+
+
+_RAIZ = "raiz-cuarentena"
+
+def _jerarquia_ok(nombre_proyecto: str = "[OK] EU-21822_Sabine_Jennes") -> dict[str, dict]:
+    return {
+        "proy": {
+            "id": "proy", "name": nombre_proyecto,
+            "mimeType": navegador.MIME_FOLDER, "parents": ["sem"], "trashed": False,
+        },
+        "sem": {
+            "id": "sem", "name": "Semana 18",
+            "mimeType": navegador.MIME_FOLDER, "parents": ["resp"], "trashed": False,
+        },
+        "resp": {
+            "id": "resp", "name": "Esteban",
+            "mimeType": navegador.MIME_FOLDER, "parents": [_RAIZ], "trashed": False,
+        },
+    }
+
+
+@patch("config.drive_cuarentena_id", return_value=_RAIZ)
+def test_resolver_proyecto_devuelve_contexto_completo(_mock_raiz):
+    servicio = _servicio_jerarquia(_jerarquia_ok())
+    r = navegador.resolver_proyecto_por_carpeta(servicio, "proy")
+    assert r == {
+        "id": "proy",
+        "name": "[OK] EU-21822_Sabine_Jennes",
+        "estado": "OK",
+        "nombre_limpio": "EU-21822_Sabine_Jennes",
+        "semana": "Semana 18",
+        "semana_id": "sem",
+        "responsable": "Esteban",
+    }
+
+
+@patch("config.drive_cuarentena_id", return_value=_RAIZ)
+def test_resolver_proyecto_sin_prefijo_queda_pendiente(_mock_raiz):
+    servicio = _servicio_jerarquia(_jerarquia_ok("SP-21493_Belen_Duenas"))
+    r = navegador.resolver_proyecto_por_carpeta(servicio, "proy")
+    assert r["estado"] == "PENDIENTE"
+    assert r["nombre_limpio"] == "SP-21493_Belen_Duenas"
+
+
+@patch("config.drive_cuarentena_id", return_value=_RAIZ)
+def test_resolver_proyecto_carpetas_especiales(_mock_raiz):
+    j = _jerarquia_ok()
+    j["sem"]["name"] = "ARMARIOS PAX"
+    r = navegador.resolver_proyecto_por_carpeta(_servicio_jerarquia(j), "proy")
+    assert r["semana"] == "ARMARIOS PAX"
+
+
+@patch("config.drive_cuarentena_id", return_value=_RAIZ)
+def test_resolver_proyecto_rechaza_papelera(_mock_raiz):
+    j = _jerarquia_ok()
+    j["proy"]["trashed"] = True
+    assert navegador.resolver_proyecto_por_carpeta(_servicio_jerarquia(j), "proy") is None
+
+
+@patch("config.drive_cuarentena_id", return_value=_RAIZ)
+def test_resolver_proyecto_rechaza_lo_que_no_es_carpeta(_mock_raiz):
+    j = _jerarquia_ok()
+    j["proy"]["mimeType"] = "application/pdf"
+    assert navegador.resolver_proyecto_por_carpeta(_servicio_jerarquia(j), "proy") is None
+
+
+@patch("config.drive_cuarentena_id", return_value=_RAIZ)
+def test_resolver_proyecto_rechaza_carpeta_fuera_de_la_raiz(_mock_raiz):
+    """Salvaguarda: la SA ve más Drive que esta jerarquía y el ID llega por URL."""
+    j = _jerarquia_ok()
+    j["resp"]["parents"] = ["otra-raiz-cualquiera"]
+    assert navegador.resolver_proyecto_por_carpeta(_servicio_jerarquia(j), "proy") is None
+
+
+@patch("config.drive_cuarentena_id", return_value=_RAIZ)
+def test_resolver_proyecto_id_inexistente(_mock_raiz):
+    assert navegador.resolver_proyecto_por_carpeta(_servicio_jerarquia({}), "no-existe") is None
+
+
+@patch("config.drive_cuarentena_id", return_value=_RAIZ)
+def test_resolver_proyecto_sin_padres(_mock_raiz):
+    j = _jerarquia_ok()
+    j["proy"]["parents"] = []
+    assert navegador.resolver_proyecto_por_carpeta(_servicio_jerarquia(j), "proy") is None
