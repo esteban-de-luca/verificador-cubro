@@ -205,6 +205,67 @@ def listar_proyectos(servicio: Any, semana_id: str) -> list[dict]:
     return proyectos
 
 
+def resolver_proyecto_por_carpeta(servicio: Any, folder_id: str) -> dict | None:
+    """
+    Resuelve un proyecto a partir del ID de SU CARPETA, sin recorrer la cascada
+    Responsable → Semana → Proyecto.
+
+    Es lo que necesita el enlace directo desde el dashboard (07/09/2026): el
+    dashboard ya sabe resolver la carpeta de corte de un proyecto con su propia
+    Service Account, así que manda el ID de la carpeta y aquí se recupera todo
+    el contexto SUBIENDO dos niveles en Drive, en vez de que el dashboard tenga
+    que mandar también responsable y semana. Ventaja: el log sale con los mismos
+    valores que cuando se navega a mano (los nombres de las carpetas), no con un
+    formato paralelo que luego no cruzaría en el dashboard.
+
+    Devuelve el mismo dict que `listar_proyectos` más el contexto:
+    `{id, name, estado, nombre_limpio, semana, semana_id, responsable}`, o
+    `None` si la
+    carpeta no existe, está en la papelera, no es una carpeta, o **no cuelga de
+    la raíz de cuarentena**. Esa última comprobación es deliberada: la Service
+    Account ve mucho más de Drive que esta jerarquía, y un ID de carpeta llega
+    aquí por la URL — sin la comprobación, cualquiera podría apuntar la
+    herramienta a una carpeta ajena.
+    """
+    def _get(fid: str) -> dict | None:
+        try:
+            return servicio.files().get(
+                fileId=fid,
+                fields="id, name, mimeType, parents, trashed",
+                supportsAllDrives=True,
+            ).execute(num_retries=2)
+        except Exception:
+            return None
+
+    proyecto = _get(folder_id)
+    if not proyecto or proyecto.get("trashed"):
+        return None
+    if proyecto.get("mimeType") != MIME_FOLDER:
+        return None
+
+    semana = _get((proyecto.get("parents") or [""])[0])
+    if not semana:
+        return None
+    responsable = _get((semana.get("parents") or [""])[0])
+    if not responsable:
+        return None
+
+    # Salvaguarda: la carpeta del responsable tiene que colgar de la raíz.
+    if config.drive_cuarentena_id() not in (responsable.get("parents") or []):
+        return None
+
+    nombre = proyecto.get("name", "")
+    return {
+        "id": proyecto["id"],
+        "name": nombre,
+        "estado": _extraer_estado(nombre),
+        "nombre_limpio": _RE_PREFIJO.sub("", nombre),
+        "semana": semana.get("name", ""),
+        "semana_id": semana["id"],
+        "responsable": responsable.get("name", ""),
+    }
+
+
 def archivo_existe_en_carpeta(
     servicio: Any, folder_id: str, nombre: str
 ) -> bool:
