@@ -1565,6 +1565,32 @@ class TestC47:
         r = check_margen_borde_tablero(dxfs, reglas)
         assert r.resultado == "PASS"
 
+    # --- Los contornos abiertos (cortes de retal) no se miden ---
+
+    def test_corte_de_retal_abierto_tocando_el_borde_no_es_error(self, reglas):
+        # Caso real EU-24177 T2: la línea de corte de un retal es una
+        # polilínea ABIERTA en la capa de contorno y toca el borde por
+        # definición — no es una pieza y no debe medirse.
+        retal = dict(_contorno(-2.5, -3345.5, 2027, 598), cerrada=False)
+        pieza_ok = dict(_contorno(1000.0, -3300.0, 400, 500), cerrada=True)
+        dxfs = [_dxf_margen([retal, pieza_ok])]
+        r = check_margen_borde_tablero(dxfs, reglas)
+        assert r.resultado == "PASS"
+
+    def test_pieza_cerrada_tocando_sigue_fallando_junto_a_un_retal(self, reglas):
+        retal = dict(_contorno(-2.5, -3345.5, 2027, 598), cerrada=False)
+        pieza_mal = dict(_contorno(825.5, -3345.5, 1398, 598), cerrada=True)
+        dxfs = [_dxf_margen([retal, pieza_mal])]
+        r = check_margen_borde_tablero(dxfs, reglas)
+        assert r.resultado == "FAIL"
+        assert "1 pieza tocando el borde del tablero" in r.detalle
+
+    def test_contorno_sin_clave_cerrada_cuenta_como_pieza(self, reglas):
+        # Compatibilidad: un dict sin la clave (datos antiguos) se mide
+        dxfs = [_dxf_margen([_contorno(825.5, -3345.5, 1398, 598)])]
+        r = check_margen_borde_tablero(dxfs, reglas)
+        assert r.resultado == "FAIL"
+
     def test_warn_sin_rectangulo_de_tablero(self, reglas):
         # Hay piezas pero el DXF no trae rectángulo de tablero → no verificable
         dxfs = [_dxf_margen([
