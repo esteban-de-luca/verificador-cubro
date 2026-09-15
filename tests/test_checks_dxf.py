@@ -1505,6 +1505,19 @@ class TestC47:
         assert r.resultado == "PASS"
         assert "nada que medir" in r.detalle
 
+    def test_reglas_sin_seccion_usa_defaults(self):
+        # Caso real 15/09/2026: la Streamlit servía unas reglas cacheadas de
+        # antes del despliegue, sin margen_borde_tablero, y el KeyError
+        # tumbaba la verificación entera. Sin la sección, el check aplica
+        # sus defaults (5 mm / eps 0.1) y sigue detectando la pieza a 0 mm.
+        dxfs = [_dxf_margen([
+            _contorno(825.5, -3345.5, 1398, 598),  # tocando el borde superior
+        ])]
+        r = check_margen_borde_tablero(dxfs, {})
+        assert r.resultado == "FAIL"
+        assert "tocando el borde superior" in r.detalle
+        assert "mínimo 5mm" in r.detalle
+
     def test_skip_sin_dxfs(self, reglas):
         r = check_margen_borde_tablero([], reglas)
         assert r.resultado == "SKIP"

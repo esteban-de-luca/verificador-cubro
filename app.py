@@ -32,13 +32,25 @@ _ROOT = Path(__file__).parent
 # Recursos cacheados
 # ---------------------------------------------------------------------------
 
-@st.cache_resource
-def get_reglas():
-    return cargar_reglas(_ROOT / "reglas.yaml")
+# Las reglas se cachean con el mtime del YAML como clave: en Streamlit Cloud
+# un push actualiza los ficheros y re-ejecuta el script SIN reiniciar el
+# proceso, así que un @st.cache_resource sin argumentos seguiría sirviendo el
+# YAML parseado ANTES del despliegue (KeyError en cualquier check que use una
+# sección nueva — pasó con C-47 y margen_borde_tablero el 15/09/2026).
 
 @st.cache_resource
-def get_reglas_cnc():
+def _reglas_por_mtime(mtime: float):
+    return cargar_reglas(_ROOT / "reglas.yaml")
+
+def get_reglas():
+    return _reglas_por_mtime((_ROOT / "reglas.yaml").stat().st_mtime)
+
+@st.cache_resource
+def _reglas_cnc_por_mtime(mtime: float):
     return cargar_reglas_cnc(_ROOT / "reglas_cnc.yaml")
+
+def get_reglas_cnc():
+    return _reglas_cnc_por_mtime((_ROOT / "reglas_cnc.yaml").stat().st_mtime)
 
 @st.cache_resource
 def get_servicio():
