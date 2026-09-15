@@ -76,6 +76,7 @@ from checks.checks_dxf import (
     check_distancia_bisagras,
     check_nesting_laca,
     check_geometria_prohibida,
+    check_margen_borde_tablero,
 )
 from checks.checks_bultos import (
     check_num_bultos,
@@ -316,7 +317,7 @@ def _ejecutar_checks(
     resultados.append(check_alto_puerta_sufijo(datos.piezas, reglas))
     resultados.append(check_tipologia_inferible(datos.piezas))
 
-    # DXF (C-30..C-43)
+    # DXF (C-30..C-47)
     resultados.append(check_layer_control(datos.dxfs, reglas))
     resultados.append(check_layer_0_sin_geometria(datos.dxfs, reglas))
     resultados.append(check_layers_rhino_ausentes(datos.dxfs, reglas))
@@ -334,6 +335,7 @@ def _ejecutar_checks(
     resultados.append(check_distancia_bisagras(datos.dxfs, reglas))
     resultados.append(check_nesting_laca(datos.dxfs, reglas, datos.piezas, ot))
     resultados.append(check_geometria_prohibida(datos.dxfs, reglas))
+    resultados.append(check_margen_borde_tablero(datos.dxfs, reglas))
 
     # Bultos (C-50..C-56)
     resultados.append(check_num_bultos(datos.filas_ean, datos.n_bultos_pdf))

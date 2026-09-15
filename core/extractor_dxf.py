@@ -355,6 +355,59 @@ def _extraer_contornos_pieza(
     return contornos
 
 
+#: Lado mínimo (mm) para que una polilínea de 0_ANOTACIONES cuente como el
+#: rectángulo del tablero. Los tableros en bruto de CUBRO superan los 1200 mm
+#: en su lado corto; los glifos de texto explotado a curvas que conviven en la
+#: misma capa quedan muy por debajo, así que no hay ambigüedad posible.
+TABLERO_LADO_MIN_MM = 800.0
+
+#: Layers de anotaciones (mismos que reconoce _extraer_ids_piezas).
+_LAYERS_ANOTACIONES = ("0_ANOTACIONES", "ANOTACIONES")
+
+
+def _extraer_tablero_bbox(entidades: list[dict]) -> dict | None:
+    """
+    Extrae el bounding box del rectángulo del tablero en bruto que el nesting
+    dibuja en 0_ANOTACIONES. Es la referencia de C-47 (margen de las piezas
+    al borde del tablero).
+
+    Cada DXF conserva el offset de coordenadas del documento Rhino original
+    (el tablero NO está en el origen y cada tablero del proyecto vive en una
+    zona distinta del plano), así que este rectángulo es la única referencia
+    fiable de dónde están los bordes — no sirven medidas fijas por gama.
+
+    Candidatos: polilíneas de la capa de anotaciones cuyos DOS lados superan
+    TABLERO_LADO_MIN_MM (un glifo de texto nunca llega; una línea de cota
+    larga pero plana tampoco). Si hay varios, gana el de mayor área.
+
+    Devuelve {'xmin','xmax','ymin','ymax'} o None si no hay candidato.
+    """
+    mejor: dict | None = None
+    mejor_area = 0.0
+    for e in entidades:
+        if e["tipo"] not in ("POLYLINE", "LWPOLYLINE"):
+            continue
+        if e["layer"].upper() not in _LAYERS_ANOTACIONES:
+            continue
+        vertices = e.get("vertices") or []
+        if not vertices:
+            continue
+        ez = e.get("extrusion_z", 1.0)
+        vertices_wcs = [_aplicar_extrusion_wcs(vx, vy, ez) for vx, vy in vertices]
+        xs = [v[0] for v in vertices_wcs]
+        ys = [v[1] for v in vertices_wcs]
+        ancho = max(xs) - min(xs)
+        alto = max(ys) - min(ys)
+        if ancho < TABLERO_LADO_MIN_MM or alto < TABLERO_LADO_MIN_MM:
+            continue
+        area = ancho * alto
+        if area > mejor_area:
+            mejor_area = area
+            mejor = {"xmin": min(xs), "xmax": max(xs),
+                     "ymin": min(ys), "ymax": max(ys)}
+    return mejor
+
+
 def _extraer_ids_piezas(entidades: list[dict]) -> list[str]:
     """
     Extrae IDs de piezas del layer 0_ANOTACIONES.
@@ -413,6 +466,7 @@ def leer_dxf(origen: BinaryIO | Path | str, nombre: str | None = None) -> DXFDoc
     ids_piezas = _extraer_ids_piezas(entidades)
     circulos = _extraer_circulos(entidades)
     piezas_contorno = _extraer_contornos_pieza(entidades)
+    tablero_bbox = _extraer_tablero_bbox(entidades)
 
     return DXFDoc(
         nombre=nombre,
@@ -427,6 +481,7 @@ def leer_dxf(origen: BinaryIO | Path | str, nombre: str | None = None) -> DXFDoc
         circulos=circulos,
         piezas_contorno=piezas_contorno,
         conteos_tipo_por_layer=conteos_tipo_por_layer,
+        tablero_bbox=tablero_bbox,
     )
 
 

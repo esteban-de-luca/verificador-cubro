@@ -1144,3 +1144,102 @@ def _formatear_error(
         f"Pieza B {wb:.0f}×{hb:.0f}mm @ ({b['xmin']:.0f},{b['ymin']:.0f}). "
         f"{motivo}"
     )
+
+
+# ---------------------------------------------------------------------------
+# C-47: Margen mínimo de las piezas al borde del tablero
+# ---------------------------------------------------------------------------
+# Toda pieza nesteada debe quedar a ≥ 5 mm (reglas.yaml) del borde del tablero
+# en bruto: los cantos del tablero no son fiables (despuntados, fuera de
+# escuadra) y una pieza cortada a ras del borde sale defectuosa.
+#
+# La referencia del borde es el rectángulo del tablero que el nesting dibuja
+# en 0_ANOTACIONES (DXFDoc.tablero_bbox) — cada DXF conserva el offset de
+# coordenadas del documento Rhino, así que el tablero no está en el origen y
+# no valen medidas fijas por gama. Los contornos de pieza son los mismos que
+# usan C-44/C-45 (CUTEXT / CONTORNO LACA), así que la laca no estándar queda
+# cubierta con la misma regla.
+# ---------------------------------------------------------------------------
+
+def check_margen_borde_tablero(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
+    """C-47: Toda pieza a ≥ min_mm del borde del tablero. Bloquea: Sí.
+
+    Por cada pieza se miden los 4 márgenes de su contorno contra el rectángulo
+    del tablero y se reporta cada borde que incumple, con mensaje según el
+    caso: a X mm del borde / tocando el borde / sobresale X mm del tablero.
+
+    Un DXF con piezas pero sin rectángulo de tablero reconocible en
+    0_ANOTACIONES no se puede medir → WARN (nunca un PASS silencioso).
+    Un DXF sin contornos de pieza no aporta nada que medir (el layer de corte
+    perimetral ausente ya lo bloquea C-35).
+    """
+    ID = "C-47"
+    DESC = "Margen mínimo de las piezas al borde del tablero"
+    s = _si_no_dxfs(ID, DESC, dxfs)
+    if s:
+        return s
+
+    cfg = reglas["margen_borde_tablero"]
+    min_mm = float(cfg["min_mm"])
+    eps = float(cfg.get("eps_mm", 0.1))
+
+    errores: list[str] = []
+    no_verificables: list[str] = []
+    n_piezas = 0
+
+    for dxf in dxfs:
+        contornos = dxf.piezas_contorno
+        if not contornos:
+            continue
+        tab = dxf.tablero_bbox
+        if tab is None:
+            no_verificables.append(dxf.nombre)
+            continue
+        for c in contornos:
+            n_piezas += 1
+            margenes = {
+                "izquierdo": c["xmin"] - tab["xmin"],
+                "derecho": tab["xmax"] - c["xmax"],
+                "inferior": c["ymin"] - tab["ymin"],
+                "superior": tab["ymax"] - c["ymax"],
+            }
+            infracciones = [
+                (borde, m) for borde, m in margenes.items() if m < min_mm - eps
+            ]
+            if not infracciones:
+                continue
+            partes = []
+            for borde, m in infracciones:
+                if m < -eps:
+                    partes.append(f"sobresale {-m:.1f}mm del borde {borde} del tablero")
+                elif m <= eps:
+                    partes.append(f"tocando el borde {borde} del tablero (0mm)")
+                else:
+                    partes.append(f"a {m:.1f}mm del borde {borde} del tablero")
+            ancho = c["xmax"] - c["xmin"]
+            alto = c["ymax"] - c["ymin"]
+            errores.append(
+                f"{dxf.nombre}: pieza {ancho:.0f}×{alto:.0f}mm "
+                f"@ ({c['xmin']:.0f},{c['ymin']:.0f}) {' y '.join(partes)} "
+                f"(mínimo {min_mm:g}mm)"
+            )
+
+    if errores:
+        return _resultado(ID, DESC, errores, True, _GRUPO)
+    if no_verificables:
+        return _warn(
+            ID, DESC,
+            f"Sin errores en lo verificable, pero {len(no_verificables)} "
+            f"tablero(s) con piezas no traen un rectángulo de tablero "
+            f"reconocible en 0_ANOTACIONES y su margen al borde no se pudo "
+            f"medir: {', '.join(sorted(no_verificables))}",
+            _GRUPO,
+        )
+    if n_piezas == 0:
+        return CheckResult(
+            ID, DESC, "PASS",
+            "Sin contornos de pieza en los DXFs — nada que medir "
+            "(el layer de corte perimetral ausente lo bloquea C-35)",
+            True, _GRUPO,
+        )
+    return _pass(ID, DESC, True, _GRUPO)

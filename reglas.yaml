@@ -344,6 +344,23 @@ nesting_laca:
   solape_vecindad: 0.5
 
 # -----------------------------------------------------------------------------
+# MARGEN AL BORDE DEL TABLERO (Check C-47)
+# Toda pieza del nesting debe quedar separada del borde del tablero en bruto
+# un mínimo de 5 mm: los cantos del tablero no son fiables (despuntados, fuera
+# de escuadra, con marcas de manipulación) y una pieza cortada a ras del borde
+# sale defectuosa.
+# La referencia del borde es el rectángulo del tablero que el nesting dibuja en
+# 0_ANOTACIONES: cada DXF conserva el offset de coordenadas del documento de
+# Rhino, así que el tablero NO está en el origen y no valen medidas fijas por
+# gama. Un DXF con piezas pero sin ese rectángulo → WARN (no verificable).
+# -----------------------------------------------------------------------------
+margen_borde_tablero:
+  # Distancia mínima (mm) entre el contorno de cada pieza y cada borde.
+  min_mm: 5
+  # Tolerancia para el ruido de coma flotante del CAM (misma que C-44).
+  eps_mm: 0.1
+
+# -----------------------------------------------------------------------------
 # DESBASTE TIRADOR (Check C-36)
 # Mapping color tirador → layer DXF esperado
 # La clave _LIN aplica a cualquier pieza de gama LIN independientemente del color
