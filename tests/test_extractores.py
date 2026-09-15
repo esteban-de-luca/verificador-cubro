@@ -726,6 +726,86 @@ class TestLeerDXFContornosPieza:
         assert {(c["x"], c["y"]) for c in d.circulos} == {(250.0, 250.0), (750.0, 250.0)}
 
 
+class TestExtraerTableroBbox:
+    """Tests de la extracción del rectángulo del tablero en 0_ANOTACIONES (C-47)."""
+
+    def _dxf(self, polilineas: list[tuple[str, list[tuple[float, float]]]]) -> io.BytesIO:
+        """Construye un DXF con LWPOLYLINEs (layer, vertices)."""
+        doc = ezdxf.new(dxfversion="R2010")
+        msp = doc.modelspace()
+        for layer, vertices in polilineas:
+            if layer not in doc.layers:
+                doc.layers.add(layer)
+            msp.add_lwpolyline(vertices, dxfattribs={"layer": layer})
+        stream = io.StringIO()
+        doc.write(stream)
+        buf = io.BytesIO(stream.getvalue().encode("cp1252", errors="replace"))
+        buf.seek(0)
+        return buf
+
+    #: Rectángulo del tablero con el offset real de Rhino (no está en el origen).
+    _RECT_TABLERO = [(-2.5, -3997.5), (3047.5, -3997.5),
+                     (3047.5, -2747.5), (-2.5, -2747.5)]
+
+    def test_extrae_rectangulo_del_tablero(self):
+        """PASS: rectángulo 3050×1250 en 0_ANOTACIONES → tablero_bbox."""
+        from core.extractor_dxf import leer_dxf
+        buf = self._dxf([("0_ANOTACIONES", self._RECT_TABLERO)])
+        d = leer_dxf(buf, nombre="EU-22061_X_MDF_WOOD_ROBLE_T2.dxf")
+        assert d.tablero_bbox is not None
+        assert d.tablero_bbox["xmin"] == pytest.approx(-2.5)
+        assert d.tablero_bbox["xmax"] == pytest.approx(3047.5)
+        assert d.tablero_bbox["ymin"] == pytest.approx(-3997.5)
+        assert d.tablero_bbox["ymax"] == pytest.approx(-2747.5)
+
+    def test_glifos_de_texto_no_confunden(self):
+        """PASS: los glifos de texto explotado a curvas (polilíneas pequeñas)
+        que conviven en 0_ANOTACIONES no se toman por el tablero."""
+        from core.extractor_dxf import leer_dxf
+        glifo = [(100.0, -2700.0), (108.0, -2700.0), (108.0, -2688.0),
+                 (100.0, -2688.0)]
+        buf = self._dxf([
+            ("0_ANOTACIONES", glifo),
+            ("0_ANOTACIONES", self._RECT_TABLERO),
+            ("0_ANOTACIONES", [(v[0] + 20, v[1]) for v in glifo]),
+        ])
+        d = leer_dxf(buf, nombre="EU-22061_X_MDF_WOOD_ROBLE_T2.dxf")
+        assert d.tablero_bbox["xmax"] == pytest.approx(3047.5)
+
+    def test_linea_de_cota_larga_pero_plana_no_cuenta(self):
+        """PASS: una polilínea larga en un solo eje (cota/subrayado) no llega
+        al lado mínimo en el otro eje → no es el tablero."""
+        from core.extractor_dxf import leer_dxf
+        buf = self._dxf([
+            ("0_ANOTACIONES", [(0.0, -2700.0), (2900.0, -2700.0),
+                               (2900.0, -2695.0), (0.0, -2695.0)]),
+        ])
+        d = leer_dxf(buf, nombre="EU-22061_X_MDF_WOOD_ROBLE_T2.dxf")
+        assert d.tablero_bbox is None
+
+    def test_sin_anotaciones_devuelve_none(self):
+        """PASS: DXF sin rectángulo en 0_ANOTACIONES → tablero_bbox None."""
+        from core.extractor_dxf import leer_dxf
+        buf = self._dxf([
+            ("10_12-CUTEXT-EM5-Z18", [(0.0, 0.0), (398.0, 0.0),
+                                      (398.0, 598.0), (0.0, 598.0)]),
+        ])
+        d = leer_dxf(buf, nombre="EU-22061_X_MDF_WOOD_ROBLE_T2.dxf")
+        assert d.tablero_bbox is None
+
+    def test_contorno_de_pieza_grande_no_es_el_tablero(self):
+        """PASS: una pieza grande en CUTEXT no cuenta — solo se mira la capa
+        de anotaciones."""
+        from core.extractor_dxf import leer_dxf
+        buf = self._dxf([
+            ("10_12-CUTEXT-EM5-Z18", [(0.0, 0.0), (2400.0, 0.0),
+                                      (2400.0, 1200.0), (0.0, 1200.0)]),
+            ("0_ANOTACIONES", self._RECT_TABLERO),
+        ])
+        d = leer_dxf(buf, nombre="EU-22061_X_MDF_WOOD_ROBLE_T2.dxf")
+        assert d.tablero_bbox["ymin"] == pytest.approx(-3997.5)
+
+
 # ===========================================================================
 # Tests de extractor_ot
 # ===========================================================================

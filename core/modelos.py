@@ -194,6 +194,12 @@ class DXFDoc:
     #: Usado por C-46 para detectar tipos de geometría prohibidos (p.ej. SPLINE).
     conteos_tipo_por_layer: dict[str, dict[str, int]] = field(default_factory=dict)
 
+    #: Bounding box del rectángulo del tablero en bruto que el nesting dibuja
+    #: en 0_ANOTACIONES. Referencia de C-47 (margen mínimo de las piezas al
+    #: borde del tablero). None si el DXF no trae un rectángulo reconocible.
+    #: Estructura: {'xmin': float, 'xmax': float, 'ymin': float, 'ymax': float}.
+    tablero_bbox: dict | None = None
+
     @property
     def clave_material(self) -> str:
         return f"{self.material}_{self.gama}_{self.acabado}"
