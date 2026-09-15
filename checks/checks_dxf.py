@@ -1179,8 +1179,12 @@ def check_margen_borde_tablero(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     if s:
         return s
 
-    cfg = reglas["margen_borde_tablero"]
-    min_mm = float(cfg["min_mm"])
+    # Valores por defecto en código: unas reglas que vengan de una caché
+    # anterior al despliegue de C-47 (o un YAML recortado) no traen la
+    # sección, y un KeyError tumbaría la verificación ENTERA — el margen
+    # de 5 mm es la regla de negocio y no depende del YAML para existir.
+    cfg = reglas.get("margen_borde_tablero") or {}
+    min_mm = float(cfg.get("min_mm", 5))
     eps = float(cfg.get("eps_mm", 0.1))
 
     errores: list[str] = []
