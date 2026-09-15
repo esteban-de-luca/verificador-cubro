@@ -125,7 +125,7 @@ def _parsear_entities_raw(contenido: str) -> list[dict]:
     def _nuevo_simple(tipo: str) -> dict:
         return {"tipo": tipo, "layer": "0", "texto": "",
                 "x": None, "y": None, "r": None, "vertices": [],
-                "extrusion_z": 1.0}
+                "extrusion_z": 1.0, "cerrada": False}
 
     i = inicio
     while i < fin - 1:
@@ -194,10 +194,17 @@ def _parsear_entities_raw(contenido: str) -> list[dict]:
             elif poly is not None:
                 if codigo == 8:
                     poly["layer"] = valor
+                elif codigo == 70:
+                    # Bit 1 = polilínea CERRADA. Distingue el contorno de una
+                    # pieza real (siempre cerrado en los nestings de CUBRO)
+                    # de una línea de corte de retal (abierta). El código 70
+                    # de los VERTEX no llega aquí: lo absorbe la rama de vert.
+                    try: poly["cerrada"] = bool(int(valor) & 1)
+                    except ValueError: pass
                 elif codigo == 230:  # Z de la dirección de extrusión
                     try: poly["extrusion_z"] = float(valor)
                     except ValueError: pass
-                # codes 66/70: flags, ignoramos
+                # code 66: flag de "siguen vértices", ignoramos
             elif cur is not None:
                 if codigo == 8:
                     cur["layer"] = valor
@@ -223,6 +230,12 @@ def _parsear_entities_raw(contenido: str) -> list[dict]:
                         except ValueError: pass
                 elif codigo == 40:
                     try: cur["r"] = float(valor)
+                    except ValueError: pass
+                elif codigo == 70 and cur["tipo"] == "LWPOLYLINE":
+                    # Bit 1 = LWPOLYLINE cerrada (contorno de pieza real);
+                    # sin él es una línea abierta (corte de retal). Solo se
+                    # lee en LWPOLYLINE: otros tipos usan el 70 para otra cosa.
+                    try: cur["cerrada"] = bool(int(valor) & 1)
                     except ValueError: pass
                 elif codigo == 230:  # Z de la dirección de extrusión
                     # 230=-1.0 → entidad reflejada (típicamente representación
@@ -330,7 +343,13 @@ def _extraer_contornos_pieza(
     Si la polilínea tiene extrusion_z = -1 (cara trasera), se aplica la
     transformación X → -X a los vértices antes de calcular el bbox.
 
-    Cada entrada devuelta: {'layer', 'xmin', 'xmax', 'ymin', 'ymax'}.
+    Cada contorno lleva además 'cerrada': True si la polilínea trae el flag
+    de cierre del DXF (código 70, bit 1) o si su primer y último vértice
+    coinciden. En los nestings de CUBRO los contornos de pieza reales van
+    SIEMPRE cerrados; una polilínea abierta en estas capas es una línea de
+    corte de retal — C-47 solo mide las cerradas.
+
+    Cada entrada devuelta: {'layer', 'xmin', 'xmax', 'ymin', 'ymax', 'cerrada'}.
     """
     contornos: list[dict] = []
     for e in entidades:
@@ -345,12 +364,18 @@ def _extraer_contornos_pieza(
         vertices_wcs = [_aplicar_extrusion_wcs(vx, vy, ez) for vx, vy in vertices]
         xs = [v[0] for v in vertices_wcs]
         ys = [v[1] for v in vertices_wcs]
+        cerrada = bool(e.get("cerrada")) or (
+            len(vertices_wcs) >= 4
+            and abs(vertices_wcs[0][0] - vertices_wcs[-1][0]) < 0.01
+            and abs(vertices_wcs[0][1] - vertices_wcs[-1][1]) < 0.01
+        )
         contornos.append({
             "layer": e["layer"],
             "xmin": min(xs),
             "xmax": max(xs),
             "ymin": min(ys),
             "ymax": max(ys),
+            "cerrada": cerrada,
         })
     return contornos
 

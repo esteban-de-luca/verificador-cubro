@@ -726,6 +726,79 @@ class TestLeerDXFContornosPieza:
         assert {(c["x"], c["y"]) for c in d.circulos} == {(250.0, 250.0), (750.0, 250.0)}
 
 
+class TestContornoCerradoVsAbierto:
+    """El flag de cierre distingue pieza real (cerrada) de corte de retal
+    (polilínea abierta) — C-47 solo mide contornos cerrados."""
+
+    def _buf(self, doc):
+        stream = io.StringIO()
+        doc.write(stream)
+        buf = io.BytesIO(stream.getvalue().encode("cp1252", errors="replace"))
+        buf.seek(0)
+        return buf
+
+    def test_polyline_cerrada_marca_cerrada(self):
+        """PASS: POLYLINE con flag de cierre → cerrada=True (el caso de todas
+        las piezas reales medidas en los nestings de CUBRO)."""
+        from core.extractor_dxf import leer_dxf
+        doc = ezdxf.new(dxfversion="R2010")
+        msp = doc.modelspace()
+        doc.layers.add("10_12-CUTEXT-EM5-Z18")
+        pl = msp.add_polyline2d(
+            [(0.0, 0.0), (398.0, 0.0), (398.0, 598.0), (0.0, 598.0)],
+            dxfattribs={"layer": "10_12-CUTEXT-EM5-Z18"})
+        pl.close(True)
+        d = leer_dxf(self._buf(doc), nombre="EU-24177_X_PLY_LAMINADO_METAL_T1.dxf")
+        assert len(d.piezas_contorno) == 1
+        assert d.piezas_contorno[0]["cerrada"] is True
+
+    def test_polyline_abierta_marca_abierta(self):
+        """PASS: POLYLINE abierta (línea de corte de retal, caso real
+        EU-24177 T2) → cerrada=False."""
+        from core.extractor_dxf import leer_dxf
+        doc = ezdxf.new(dxfversion="R2010")
+        msp = doc.modelspace()
+        doc.layers.add("10_12-CUTEXT-EM5-Z18")
+        msp.add_polyline2d(
+            [(0.0, 0.0), (2027.0, 0.0), (2027.0, 797.0)],
+            dxfattribs={"layer": "10_12-CUTEXT-EM5-Z18"})
+        d = leer_dxf(self._buf(doc), nombre="EU-24177_X_PLY_LAMINADO_METAL_T2.dxf")
+        assert len(d.piezas_contorno) == 1
+        assert d.piezas_contorno[0]["cerrada"] is False
+
+    def test_lwpolyline_cerrada_y_abierta(self):
+        """PASS: el flag de cierre también se lee en LWPOLYLINE."""
+        from core.extractor_dxf import leer_dxf
+        doc = ezdxf.new(dxfversion="R2010")
+        msp = doc.modelspace()
+        doc.layers.add("10_12-CONTORNO LACA")
+        msp.add_lwpolyline(
+            [(0.0, 0.0), (398.0, 0.0), (398.0, 598.0), (0.0, 598.0)],
+            close=True, dxfattribs={"layer": "10_12-CONTORNO LACA"})
+        msp.add_lwpolyline(
+            [(500.0, 0.0), (900.0, 0.0), (900.0, 598.0)],
+            close=False, dxfattribs={"layer": "10_12-CONTORNO LACA"})
+        d = leer_dxf(self._buf(doc), nombre="EU-24177_X_MDF_LACA_CELESTE_T1.dxf")
+        assert len(d.piezas_contorno) == 2
+        estados = sorted(c["cerrada"] for c in d.piezas_contorno)
+        assert estados == [False, True]
+
+    def test_abierta_con_primer_igual_ultimo_cuenta_como_cerrada(self):
+        """PASS: polilínea sin flag pero con el primer y último vértice
+        coincidentes (cierre geométrico) → cerrada=True. Red para CAMs que
+        exportan el rectángulo repitiendo el vértice inicial."""
+        from core.extractor_dxf import leer_dxf
+        doc = ezdxf.new(dxfversion="R2010")
+        msp = doc.modelspace()
+        doc.layers.add("10_12-CUTEXT-EM5-Z18")
+        msp.add_polyline2d(
+            [(0.0, 0.0), (398.0, 0.0), (398.0, 598.0), (0.0, 598.0),
+             (0.0, 0.0)],
+            dxfattribs={"layer": "10_12-CUTEXT-EM5-Z18"})
+        d = leer_dxf(self._buf(doc), nombre="EU-24177_X_MDF_WOOD_ROBLE_T1.dxf")
+        assert d.piezas_contorno[0]["cerrada"] is True
+
+
 class TestExtraerTableroBbox:
     """Tests de la extracción del rectángulo del tablero en 0_ANOTACIONES (C-47)."""
 

@@ -1170,6 +1170,11 @@ def check_margen_borde_tablero(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     sobresalen, tocan el borde o quedan a menos del mínimo — una línea por
     tablero, no una por pieza.
 
+    Solo se miden contornos CERRADOS (flag de cierre del DXF o primer y
+    último vértice coincidentes): las piezas reales van siempre cerradas y
+    una polilínea abierta en las capas de contorno es una línea de corte de
+    retal, que toca el borde del tablero por definición.
+
     Excepción (regla de Esteban, 15/09/2026): en proyectos con algún acabado
     LAC no estándar, C-45 exige todas las piezas LAC del proyecto PEGADAS
     entre sí (gap 0) y ese bloque se nestea a ras del borde del tablero, así
@@ -1216,7 +1221,14 @@ def check_margen_borde_tablero(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     n_lac_exentas = 0
 
     for dxf in dxfs:
-        contornos = dxf.piezas_contorno
+        # Solo contornos CERRADOS: una polilínea abierta en las capas de
+        # contorno es una línea de corte de retal, no una pieza — y el corte
+        # de un retal toca el borde del tablero por definición (caso real
+        # EU-24177 T2). Un dict sin la clave (tests, datos antiguos) cuenta
+        # como cerrado.
+        contornos = [
+            c for c in dxf.piezas_contorno if c.get("cerrada", True)
+        ]
         if not contornos:
             continue
         if dxf.gama == "LAC" and lac_pegado:
