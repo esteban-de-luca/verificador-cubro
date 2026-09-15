@@ -1157,16 +1157,24 @@ def _formatear_error(
 # en 0_ANOTACIONES (DXFDoc.tablero_bbox) — cada DXF conserva el offset de
 # coordenadas del documento Rhino, así que el tablero no está en el origen y
 # no valen medidas fijas por gama. Los contornos de pieza son los mismos que
-# usan C-44/C-45 (CUTEXT / CONTORNO LACA), así que la laca no estándar queda
-# cubierta con la misma regla.
+# usan C-44/C-45 (CUTEXT / CONTORNO LACA). Excepción: los DXFs LAC de un
+# proyecto en régimen "pegado" (algún acabado LAC no estándar, ver C-45)
+# quedan FUERA de esta regla — su bloque de piezas se nestea a ras del borde.
 # ---------------------------------------------------------------------------
 
 def check_margen_borde_tablero(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     """C-47: Toda pieza a ≥ min_mm del borde del tablero. Bloquea: Sí.
 
-    Por cada pieza se miden los 4 márgenes de su contorno contra el rectángulo
-    del tablero y se reporta cada borde que incumple, con mensaje según el
-    caso: a X mm del borde / tocando el borde / sobresale X mm del tablero.
+    Por cada pieza se mide su margen mínimo (el peor de los 4 bordes) contra
+    el rectángulo del tablero y el detalle resume POR TABLERO cuántas piezas
+    sobresalen, tocan el borde o quedan a menos del mínimo — una línea por
+    tablero, no una por pieza.
+
+    Excepción (regla de Esteban, 15/09/2026): en proyectos con algún acabado
+    LAC no estándar, C-45 exige todas las piezas LAC del proyecto PEGADAS
+    entre sí (gap 0) y ese bloque se nestea a ras del borde del tablero, así
+    que el margen no aplica a los DXFs LAC de esos proyectos. La laca en
+    régimen estándar (piezas separadas 15 mm) sigue bajo la regla.
 
     Un DXF con piezas pero sin rectángulo de tablero reconocible en
     0_ANOTACIONES no se puede medir → WARN (nunca un PASS silencioso).
@@ -1187,49 +1195,79 @@ def check_margen_borde_tablero(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     min_mm = float(cfg.get("min_mm", 5))
     eps = float(cfg.get("eps_mm", 0.1))
 
-    errores: list[str] = []
+    # Régimen de la laca del proyecto, el mismo criterio que C-35/C-45:
+    # cualquier acabado LAC fuera de la lista estándar → régimen "pegado".
+    # La lista con reserva en código, por la misma razón que los defaults.
+    lac_std = {
+        a.lower()
+        for a in ((reglas.get("layers") or {}).get("corte_perimetral") or {})
+        .get("lac_acabados_estandar", ["Roto", "Crema", "Blanco", "Seda"])
+    }
+    lac_pegado = any(
+        d.gama == "LAC" and d.acabado.lower() not in lac_std for d in dxfs
+    )
+
+    def _cuenta(n: int, sing: str, plur: str) -> str:
+        return f"1 pieza {sing}" if n == 1 else f"{n} piezas {plur}"
+
+    lineas: list[str] = []
     no_verificables: list[str] = []
     n_piezas = 0
+    n_lac_exentas = 0
 
     for dxf in dxfs:
         contornos = dxf.piezas_contorno
         if not contornos:
             continue
+        if dxf.gama == "LAC" and lac_pegado:
+            n_lac_exentas += len(contornos)
+            continue
         tab = dxf.tablero_bbox
         if tab is None:
             no_verificables.append(dxf.nombre)
             continue
+        # Cada pieza cuenta UNA vez, por su peor margen (una pieza en la
+        # esquina toca dos bordes pero es un solo problema que recolocar).
+        n_fuera = n_toca = n_cerca = 0
         for c in contornos:
             n_piezas += 1
-            margenes = {
-                "izquierdo": c["xmin"] - tab["xmin"],
-                "derecho": tab["xmax"] - c["xmax"],
-                "inferior": c["ymin"] - tab["ymin"],
-                "superior": tab["ymax"] - c["ymax"],
-            }
-            infracciones = [
-                (borde, m) for borde, m in margenes.items() if m < min_mm - eps
-            ]
-            if not infracciones:
-                continue
-            partes = []
-            for borde, m in infracciones:
-                if m < -eps:
-                    partes.append(f"sobresale {-m:.1f}mm del borde {borde} del tablero")
-                elif m <= eps:
-                    partes.append(f"tocando el borde {borde} del tablero (0mm)")
-                else:
-                    partes.append(f"a {m:.1f}mm del borde {borde} del tablero")
-            ancho = c["xmax"] - c["xmin"]
-            alto = c["ymax"] - c["ymin"]
-            errores.append(
-                f"{dxf.nombre}: pieza {ancho:.0f}×{alto:.0f}mm "
-                f"@ ({c['xmin']:.0f},{c['ymin']:.0f}) {' y '.join(partes)} "
-                f"(mínimo {min_mm:g}mm)"
+            margen = min(
+                c["xmin"] - tab["xmin"],
+                tab["xmax"] - c["xmax"],
+                c["ymin"] - tab["ymin"],
+                tab["ymax"] - c["ymax"],
+            )
+            if margen < -eps:
+                n_fuera += 1
+            elif margen <= eps:
+                n_toca += 1
+            elif margen < min_mm - eps:
+                n_cerca += 1
+        partes = []
+        if n_fuera:
+            partes.append(_cuenta(n_fuera, "sobresale del tablero",
+                                  "sobresalen del tablero"))
+        if n_toca:
+            partes.append(_cuenta(n_toca, "tocando el borde del tablero",
+                                  "tocando el borde del tablero"))
+        if n_cerca:
+            partes.append(_cuenta(
+                n_cerca,
+                f"a menos de {min_mm:g} mm del borde",
+                f"a menos de {min_mm:g} mm del borde",
+            ))
+        if partes:
+            lineas.append(
+                f"· {_etiqueta_acabado(dxf)} · T{dxf.tablero_num} — "
+                + " y ".join(partes)
             )
 
-    if errores:
-        return _resultado(ID, DESC, errores, True, _GRUPO)
+    if lineas:
+        cabecera = (f"Toda pieza debe quedar a un mínimo de {min_mm:g} mm "
+                    f"del borde del tablero:")
+        # Salto con dos espacios → salto real en el .txt y en los st.caption
+        # de la app (markdown hard break), como en C-44.
+        return _fail(ID, DESC, "  \n".join([cabecera] + lineas), True, _GRUPO)
     if no_verificables:
         return _warn(
             ID, DESC,
@@ -1240,6 +1278,14 @@ def check_margen_borde_tablero(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
             _GRUPO,
         )
     if n_piezas == 0:
+        if n_lac_exentas:
+            return CheckResult(
+                ID, DESC, "PASS",
+                "No aplica: proyecto con laca no estándar — C-45 exige las "
+                "piezas LAC pegadas entre sí y ese bloque se nestea a ras "
+                "del borde del tablero",
+                True, _GRUPO,
+            )
         return CheckResult(
             ID, DESC, "PASS",
             "Sin contornos de pieza en los DXFs — nada que medir "

@@ -353,6 +353,10 @@ nesting_laca:
 # 0_ANOTACIONES: cada DXF conserva el offset de coordenadas del documento de
 # Rhino, así que el tablero NO está en el origen y no valen medidas fijas por
 # gama. Un DXF con piezas pero sin ese rectángulo → WARN (no verificable).
+# EXCEPCIÓN: los DXFs LAC de un proyecto en régimen "pegado" (algún acabado
+# LAC no estándar — el mismo criterio de C-35/C-45) quedan fuera de la regla:
+# esas piezas van pegadas entre sí y el bloque se nestea a ras del borde.
+# La laca en régimen estándar (piezas separadas 15 mm) sigue bajo la regla.
 # -----------------------------------------------------------------------------
 margen_borde_tablero:
   # Distancia mínima (mm) entre el contorno de cada pieza y cada borde.
