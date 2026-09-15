@@ -1393,11 +1393,12 @@ def _contorno(xmin, ymin, ancho, alto, layer="10_12-CUTEXT-EM5-Z18"):
 
 
 def _dxf_margen(contornos, tablero=_TABLERO,
-                nombre="EU-22061_X_MDF_WOOD_ROBLE_T2.dxf"):
+                nombre="EU-22061_X_MDF_WOOD_ROBLE_T2.dxf",
+                gama="WOO", acabado="Roble", tablero_num=2):
     """DXF mínimo con contornos de pieza y rectángulo de tablero para C-47."""
     return DXFDoc(
-        nombre=nombre, tablero_num=2, material="MDF", gama="WOO",
-        acabado="Roble",
+        nombre=nombre, tablero_num=tablero_num, material="MDF", gama=gama,
+        acabado=acabado,
         layers={"0_ANOTACIONES", "10_12-CUTEXT-EM5-Z18"},
         layers_con_geometria={"10_12-CUTEXT-EM5-Z18"},
         conteos_layer={},
@@ -1417,16 +1418,39 @@ class TestC47:
         assert r.resultado == "PASS"
         assert r.bloquea
 
-    def test_fail_pieza_tocando_el_borde(self, reglas):
-        # Caso real EU-22061 T2: piezas con ymax exactamente en el borde superior
-        dxfs = [_dxf_margen([
-            _contorno(825.5, -3345.5, 1398, 598),  # ymax = -2747.5 = borde
-        ])]
+    def test_fail_resume_por_tablero(self, reglas):
+        # Caso real EU-22061: T2 con 3 piezas en el borde superior y T3 con
+        # 2 en el izquierdo → una línea por tablero con el recuento, no una
+        # por pieza.
+        t3 = {"xmin": -2.5, "xmax": 3047.5, "ymin": -6747.5, "ymax": -5497.5}
+        dxfs = [
+            _dxf_margen([
+                _contorno(12.5, -3345.5, 798, 598),    # ymax = borde superior
+                _contorno(825.5, -3345.5, 1398, 598),
+                _contorno(2238.5, -3345.5, 398, 598),
+            ], nombre="EU-22061_X_MDF_WOOD_ROBLE_T2.dxf", tablero_num=2),
+            _dxf_margen([
+                _contorno(-2.5, -6618.5, 798, 298),    # xmin = borde izquierdo
+                _contorno(-2.5, -6305.5, 398, 798),
+            ], tablero=t3,
+               nombre="EU-22061_X_MDF_WOOD_ROBLE_T3.dxf", tablero_num=3),
+        ]
         r = check_margen_borde_tablero(dxfs, reglas)
         assert r.resultado == "FAIL"
         assert r.bloquea
-        assert "tocando el borde superior" in r.detalle
-        assert "1398×598" in r.detalle
+        assert "T2 — 3 piezas tocando el borde del tablero" in r.detalle
+        assert "T3 — 2 piezas tocando el borde del tablero" in r.detalle
+        # Resumen por tablero: exactamente una línea por DXF + cabecera
+        assert r.detalle.count("piezas tocando") == 2
+
+    def test_fail_singular_una_pieza(self, reglas):
+        dxfs = [_dxf_margen([
+            _contorno(825.5, -3345.5, 1398, 598),
+        ])]
+        r = check_margen_borde_tablero(dxfs, reglas)
+        assert r.resultado == "FAIL"
+        assert "1 pieza tocando el borde del tablero" in r.detalle
+        assert "mínimo de 5 mm" in r.detalle
 
     def test_fail_pieza_a_menos_de_5mm(self, reglas):
         dxfs = [_dxf_margen([
@@ -1434,8 +1458,7 @@ class TestC47:
         ])]
         r = check_margen_borde_tablero(dxfs, reglas)
         assert r.resultado == "FAIL"
-        assert "a 2.0mm del borde izquierdo" in r.detalle
-        assert "mínimo 5mm" in r.detalle
+        assert "1 pieza a menos de 5 mm del borde" in r.detalle
 
     def test_fail_pieza_sobresale_del_tablero(self, reglas):
         dxfs = [_dxf_margen([
@@ -1443,17 +1466,26 @@ class TestC47:
         ])]
         r = check_margen_borde_tablero(dxfs, reglas)
         assert r.resultado == "FAIL"
-        assert "sobresale 7.5mm del borde izquierdo" in r.detalle
+        assert "1 pieza sobresale del tablero" in r.detalle
 
-    def test_fail_reporta_varios_bordes_de_una_pieza(self, reglas):
-        # Pieza en la esquina: incumple izquierda y abajo a la vez
+    def test_pieza_en_esquina_cuenta_una_vez(self, reglas):
+        # Toca dos bordes a la vez pero es UN problema que recolocar
         dxfs = [_dxf_margen([
             _contorno(-2.5, -3997.5, 400, 500),
         ])]
         r = check_margen_borde_tablero(dxfs, reglas)
         assert r.resultado == "FAIL"
-        assert "izquierdo" in r.detalle
-        assert "inferior" in r.detalle
+        assert "1 pieza tocando el borde del tablero" in r.detalle
+
+    def test_categorias_se_combinan_en_la_linea(self, reglas):
+        dxfs = [_dxf_margen([
+            _contorno(825.5, -3345.5, 1398, 598),  # tocando el borde superior
+            _contorno(-0.5, -3900.0, 300, 300),    # a 2 mm del izquierdo
+        ])]
+        r = check_margen_borde_tablero(dxfs, reglas)
+        assert r.resultado == "FAIL"
+        assert ("1 pieza tocando el borde del tablero y "
+                "1 pieza a menos de 5 mm del borde") in r.detalle
 
     def test_tolerancia_absorbe_ruido_de_coma_flotante(self, reglas):
         # Margen de 4.95 mm con min 5 y eps 0.1 → dentro de tolerancia, PASS
@@ -1471,12 +1503,67 @@ class TestC47:
         r = check_margen_borde_tablero(dxfs, reglas)
         assert r.resultado == "FAIL"
 
-    def test_contorno_laca_tambien_se_mide(self, reglas):
+    # --- Excepción de la laca en régimen "pegado" (Esteban, 15/09/2026) ---
+
+    def test_lac_no_estandar_pegada_al_borde_no_es_error(self, reglas):
+        # Caso real EU-23515 LACA CELESTE: acabado no estándar → C-45 exige
+        # las piezas pegadas y el bloque va a ras del borde → C-47 no aplica.
         dxfs = [_dxf_margen([
-            _contorno(825.5, -3345.5, 1398, 598, layer="10_12-CONTORNO LACA"),
-        ], nombre="EU-22061_X_MDF_LACA_MARGA_T1.dxf")]
+            _contorno(-2.5, -3997.5, 2350, 496,
+                      layer="10_12-CONTORNO LACA"),
+            _contorno(-2.5, -3501.5, 2350, 496,
+                      layer="10_12-CONTORNO LACA"),
+        ], nombre="EU-23515_X_MDF_LACA_CELESTE_T1.dxf",
+           gama="LAC", acabado="Celeste", tablero_num=1)]
+        r = check_margen_borde_tablero(dxfs, reglas)
+        assert r.resultado == "PASS"
+        assert "laca no estándar" in r.detalle
+
+    def test_lac_estandar_sigue_bajo_la_regla(self, reglas):
+        # Roto es estándar → régimen separado 15 mm → el margen sí aplica
+        dxfs = [_dxf_margen([
+            _contorno(-2.5, -3300.0, 400, 500,
+                      layer="10_12-CUTEXT-EM5-Z18"),
+        ], nombre="EU-23515_X_MDF_LACA_ROTO_T1.dxf",
+           gama="LAC", acabado="Roto", tablero_num=1)]
         r = check_margen_borde_tablero(dxfs, reglas)
         assert r.resultado == "FAIL"
+
+    def test_proyecto_mixto_solo_exime_a_la_laca(self, reglas):
+        # WOO tocando el borde + LAC Celeste pegada al borde en el mismo
+        # proyecto → FAIL, pero solo por el tablero WOO
+        dxfs = [
+            _dxf_margen([
+                _contorno(825.5, -3345.5, 1398, 598),
+            ], nombre="EU-23515_X_MDF_WOOD_ROBLE_T2.dxf", tablero_num=2),
+            _dxf_margen([
+                _contorno(-2.5, -3997.5, 2350, 496,
+                          layer="10_12-CONTORNO LACA"),
+            ], nombre="EU-23515_X_MDF_LACA_CELESTE_T1.dxf",
+               gama="LAC", acabado="Celeste", tablero_num=1),
+        ]
+        r = check_margen_borde_tablero(dxfs, reglas)
+        assert r.resultado == "FAIL"
+        assert "WOOD" in r.detalle
+        assert "CELESTE" not in r.detalle
+
+    def test_lac_no_estandar_en_el_proyecto_exime_a_toda_la_laca(self, reglas):
+        # Régimen de proyecto: con un Celeste en el proyecto, C-45 obliga a
+        # pegar también los tableros LAC de acabado estándar → exentos todos
+        dxfs = [
+            _dxf_margen([
+                _contorno(-2.5, -3997.5, 400, 500,
+                          layer="10_12-CONTORNO LACA"),
+            ], nombre="EU-23515_X_MDF_LACA_ROTO_T1.dxf",
+               gama="LAC", acabado="Roto", tablero_num=1),
+            _dxf_margen([
+                _contorno(1000.0, -3300.0, 400, 500,
+                          layer="10_12-CONTORNO LACA"),
+            ], nombre="EU-23515_X_MDF_LACA_CELESTE_T2.dxf",
+               gama="LAC", acabado="Celeste", tablero_num=2),
+        ]
+        r = check_margen_borde_tablero(dxfs, reglas)
+        assert r.resultado == "PASS"
 
     def test_warn_sin_rectangulo_de_tablero(self, reglas):
         # Hay piezas pero el DXF no trae rectángulo de tablero → no verificable
@@ -1494,7 +1581,8 @@ class TestC47:
             _dxf_margen([_contorno(825.5, -3345.5, 1398, 598)],
                         nombre="EU-22061_X_MDF_WOOD_ROBLE_T2.dxf"),
             _dxf_margen([_contorno(100.0, -3300.0, 400, 500)], tablero=None,
-                        nombre="EU-22061_X_MDF_WOOD_ROBLE_T3.dxf"),
+                        nombre="EU-22061_X_MDF_WOOD_ROBLE_T3.dxf",
+                        tablero_num=3),
         ]
         r = check_margen_borde_tablero(dxfs, reglas)
         assert r.resultado == "FAIL"
@@ -1509,14 +1597,14 @@ class TestC47:
         # Caso real 15/09/2026: la Streamlit servía unas reglas cacheadas de
         # antes del despliegue, sin margen_borde_tablero, y el KeyError
         # tumbaba la verificación entera. Sin la sección, el check aplica
-        # sus defaults (5 mm / eps 0.1) y sigue detectando la pieza a 0 mm.
+        # sus defaults (5 mm / eps 0.1 / lista LAC estándar) y sigue
+        # detectando la pieza a 0 mm.
         dxfs = [_dxf_margen([
             _contorno(825.5, -3345.5, 1398, 598),  # tocando el borde superior
         ])]
         r = check_margen_borde_tablero(dxfs, {})
         assert r.resultado == "FAIL"
-        assert "tocando el borde superior" in r.detalle
-        assert "mínimo 5mm" in r.detalle
+        assert "1 pieza tocando el borde del tablero" in r.detalle
 
     def test_skip_sin_dxfs(self, reglas):
         r = check_margen_borde_tablero([], reglas)
