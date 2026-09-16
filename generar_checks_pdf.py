@@ -93,7 +93,9 @@ GROUPS = [
             ("C-03", "Nº DXFs == nº tableros declarados en OT",
              "Nº de DXFs tableros = suma de tableros en OT", "Sí"),
             ("C-04", "PDFs nesting == combinaciones material DESPIECE",
-             "Un PDF por cada combinación única material+gama+acabado", "Sí"),
+             "Un PDF por cada combinación única material+gama+acabado. Un material "
+             "con '# Tableros 0' en la OT no lleva nesting, salvo que la OT declare "
+             "que su pieza se corta de un retal de stock", "Sí"),
         ],
     },
     {

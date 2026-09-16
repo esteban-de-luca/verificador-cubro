@@ -34,7 +34,8 @@ def _dxf(nombre="EU21822_X_PLY_LAMINADO_PALE_T1.dxf", material="PLY", gama="LAM"
 
 _UNSET = object()
 
-def _ot(tableros=None, n_piezas=1, num_tableros_total=_UNSET, materiales_sin_cantidad=None):
+def _ot(tableros=None, n_piezas=1, num_tableros_total=_UNSET, materiales_sin_cantidad=None,
+        observaciones_cnc=None):
     if tableros is None:
         tableros = {"PLY_LAM_Pale": 2}
     if num_tableros_total is _UNSET:
@@ -42,7 +43,8 @@ def _ot(tableros=None, n_piezas=1, num_tableros_total=_UNSET, materiales_sin_can
     return OTData("EU-21822", "Test", "Semana 18", n_piezas, 50.0, 0,
                   tableros=tableros,
                   materiales_sin_cantidad=materiales_sin_cantidad or [],
-                  num_tableros_total=num_tableros_total)
+                  num_tableros_total=num_tableros_total,
+                  observaciones_cnc=observaciones_cnc or [])
 
 
 # ---------------------------------------------------------------------------
@@ -593,4 +595,144 @@ class TestC04:
         ]
         # Solo el segundo PDF (sin prefijo DESPIECE) debe contar
         r = check_pdfs_nesting_vs_materiales(nombres, piezas)
+        assert r.resultado == "PASS"
+
+    # --- Material a 0 tableros cuya pieza se corta de un retal de stock ---
+    # El '# Tableros 0' es correcto: hace falta el plano de nesting para la CNC,
+    # pero no se pide tablero nuevo. Solo exculpa si la OT declara el consumo.
+
+    def test_pass_cero_tableros_con_pieza_cortada_de_retal(self):
+        """SP-23508 real: la única pieza de PLY Laminado Blanco sale del retal
+        R841, así que la OT declara 0 tableros para ese material y aun así
+        existe su nesting → PASS con nota, no FAIL."""
+        piezas = [
+            Pieza("P1", 298, 598, "PLY", "LAM", "Blanco", "P"),
+            Pieza("E1", 220, 2400, "MDF", "WOO", "Nogal", "E"),
+        ]
+        nombres = [
+            "SP-23508_Laura_Arribas_PLY_LAMINADO_BLANCO.pdf",
+            "SP-23508_Laura_Arribas_MDF_WOOD_NOGAL.pdf",
+        ]
+        ot = _ot(
+            tableros={"PLY_LAM_Blanco": 0, "MDF_WOO_Nogal": 1},
+            num_tableros_total=1,
+            observaciones_cnc=[
+                "La pieza P1 se debe cortar de retal R841",
+                "Retales generados 1x de WOO Nogal R867",
+            ],
+        )
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "PASS"
+        assert "PLY_LAM_Blanco" in r.detalle
+        assert "P1" in r.detalle
+        assert "R841" in r.detalle
+        assert r.tiene_nota   # la nota debe llegar al informe
+
+    def test_pass_cero_tableros_con_retal_citado_por_material(self):
+        """La observación identifica el retal por tablero en vez de por pieza
+        ('retal utilizado de MDF LACA Crema') → también exculpa el 0."""
+        piezas = [
+            Pieza("L1", 623, 2480, "MDF", "WOO", "Roble", "L"),
+            Pieza("T1", 120, 1050, "MDF", "LAC", "Crema", "T"),
+        ]
+        nombres = [
+            "EU21868INC_Philip_MDF_WOOD_ROBLE.pdf",
+            "EU21868INC_Philip_MDF_LACA_CREMA.pdf",
+        ]
+        ot = _ot(tableros={"MDF_LAC_Crema": 0, "MDF_WOO_Roble": 1},
+                 num_tableros_total=1,
+                 observaciones_cnc=["Retal utilizado de MDF LACA Crema R712"])
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "PASS"
+        assert "R712" in r.detalle
+
+    def test_fail_cero_tableros_con_nesting_y_sin_mencion_de_retal(self):
+        """Regresión a proteger: sin ninguna mención de consumo de retal, el 0
+        con nesting sigue bloqueando (el taller se quedaría sin material)."""
+        piezas = [
+            Pieza("L1", 623, 2480, "MDF", "WOO", "Roble", "L"),
+            Pieza("T1", 120, 1050, "MDF", "LAC", "Crema", "T"),
+        ]
+        nombres = [
+            "EU21868INC_Philip_MDF_WOOD_ROBLE.pdf",
+            "EU21868INC_Philip_MDF_LACA_CREMA.pdf",
+        ]
+        ot = _ot(tableros={"MDF_LAC_Crema": 0, "MDF_WOO_Roble": 1},
+                 num_tableros_total=1,
+                 observaciones_cnc=["Cantear R1 por el canto largo"])
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "0 tableros declarados en OT" in r.detalle
+        assert "MDF_LAC_Crema" in r.detalle
+
+    def test_fail_cero_tableros_con_retales_solo_generados(self):
+        """Blinda la distinción consumo/generación: 'Retales generados … R###'
+        de ese mismo material NO justifica el 0 → sigue bloqueando."""
+        piezas = [
+            Pieza("L1", 623, 2480, "MDF", "WOO", "Roble", "L"),
+            Pieza("T1", 120, 1050, "MDF", "LAC", "Crema", "T"),
+        ]
+        nombres = [
+            "EU21868INC_Philip_MDF_WOOD_ROBLE.pdf",
+            "EU21868INC_Philip_MDF_LACA_CREMA.pdf",
+        ]
+        ot = _ot(
+            tableros={"MDF_LAC_Crema": 0, "MDF_WOO_Roble": 1},
+            num_tableros_total=1,
+            observaciones_cnc=[
+                "Retales generados 1x de MDF LACA Crema R866, 1x de WOO Roble R867",
+            ],
+        )
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "MDF_LAC_Crema" in r.detalle
+
+    def test_fail_retal_de_otro_material_no_exculpa(self):
+        """El retal se consume para una pieza de OTRO material: el 0 del
+        material con nesting sigue sin justificación → FAIL."""
+        piezas = [
+            Pieza("L1", 623, 2480, "MDF", "WOO", "Roble", "L"),
+            Pieza("T1", 120, 1050, "MDF", "LAC", "Crema", "T"),
+        ]
+        nombres = [
+            "EU21868INC_Philip_MDF_WOOD_ROBLE.pdf",
+            "EU21868INC_Philip_MDF_LACA_CREMA.pdf",
+        ]
+        ot = _ot(tableros={"MDF_LAC_Crema": 0, "MDF_WOO_Roble": 1},
+                 num_tableros_total=1,
+                 observaciones_cnc=["La pieza L1 se debe cortar de retal R841"])
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "FAIL"
+        assert "MDF_LAC_Crema" in r.detalle
+
+    def test_fail_retal_no_tapa_el_nesting_que_falta_de_otro_material(self):
+        """Exculpar el 0 de un material no debe tapar la falta del PDF de otro."""
+        piezas = [
+            Pieza("P1", 298, 598, "PLY", "LAM", "Blanco", "P"),
+            Pieza("E1", 220, 2400, "MDF", "WOO", "Nogal", "E"),
+        ]
+        nombres = ["SP-23508_Laura_PLY_LAMINADO_BLANCO.pdf"]
+        ot = _ot(tableros={"PLY_LAM_Blanco": 0, "MDF_WOO_Nogal": 1},
+                 num_tableros_total=1,
+                 observaciones_cnc=["La pieza P1 se debe cortar de retal R841"])
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "MDF_WOO_Nogal" in r.detalle
+        assert "R841" in r.detalle   # el 0 exculpado se informa igualmente
+
+    def test_pass_retal_sin_pdf_no_lo_exige(self):
+        """Caso límite abierto: material a 0 con retal declarado pero SIN PDF de
+        nesting. Se mantiene el comportamiento actual (no se exige)."""
+        piezas = [
+            Pieza("P1", 298, 598, "PLY", "LAM", "Blanco", "P"),
+            Pieza("E1", 220, 2400, "MDF", "WOO", "Nogal", "E"),
+        ]
+        nombres = ["SP-23508_Laura_MDF_WOOD_NOGAL.pdf"]
+        ot = _ot(tableros={"PLY_LAM_Blanco": 0, "MDF_WOO_Nogal": 1},
+                 num_tableros_total=1,
+                 observaciones_cnc=["La pieza P1 se debe cortar de retal R841"])
+        r = check_pdfs_nesting_vs_materiales(nombres, piezas, ot)
         assert r.resultado == "PASS"

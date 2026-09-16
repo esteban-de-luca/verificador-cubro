@@ -18,6 +18,10 @@ from typing import Any
 #: Valores válidos para CheckResult.resultado.
 RESULTADOS_VALIDOS = frozenset({"PASS", "FAIL", "WARN", "SKIP"})
 
+#: Detalle con que se rellena un check superado sin nada que contar
+#: (checks/_helpers.py::_pass). Un PASS con otro detalle lleva una nota.
+DETALLE_PASS = "Correcto"
+
 #: Grupos válidos para CheckResult.grupo.
 GRUPOS_VALIDOS = frozenset({
     "Inventario", "Piezas", "Material",
@@ -48,6 +52,18 @@ class CheckResult:
                 f"CheckResult.grupo inválido: {self.grupo!r}. "
                 f"Debe ser uno de {sorted(GRUPOS_VALIDOS)}"
             )
+
+    @property
+    def tiene_nota(self) -> bool:
+        """True si `detalle` dice algo que merece mostrarse en el informe.
+
+        Un PASS normal trae el relleno 'Correcto' y no aporta nada; un PASS que
+        exculpa una excepción (p. ej. C-04 con una pieza cortada de retal) sí
+        explica por qué pasa, y esa nota debe llegar al informe.
+        """
+        return bool(self.detalle) and not (
+            self.resultado == "PASS" and self.detalle == DETALLE_PASS
+        )
 
     @property
     def es_error_critico(self) -> bool:

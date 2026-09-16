@@ -537,7 +537,7 @@ def _mostrar_informe(informe: InformeFinal, nombre_proyecto: str = "") -> None:
                     f"{_ICONO[c.resultado]} &nbsp;**{c.id}** — {c.desc}{bloquea_icon}",
                     unsafe_allow_html=True,
                 )
-                if c.detalle and c.resultado != "PASS":
+                if c.tiene_nota:
                     st.caption(c.detalle)
 
     # Descarga TXT
@@ -563,7 +563,7 @@ def _informe_a_texto(informe: InformeFinal, nombre_proyecto: str = "") -> str:
     for c in informe.checks:
         bloquea = " [BLOQUEA]" if c.resultado == "FAIL" and c.bloquea else ""
         lines.append(f"{c.id}  {c.resultado}{bloquea}  {c.desc}")
-        if c.detalle and c.resultado != "PASS":
+        if c.tiene_nota:
             lines.append(f"    → {c.detalle}")
     return "\n".join(lines)
 
