@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import fnmatch
 import re
+from dataclasses import dataclass, field
 
 from core.modelos import CheckResult, DXFDoc, ExtraccionData, OTData, Pieza
-from core.naming_material import clave_comparable, parsear_material
+from core.naming_material import clave_comparable, norm_acabado, parsear_material
+from core.retales import RetalConsumido, retales_consumidos
 from checks._helpers import (
     _pass, _fail, _warn, _skip, _resultado, _norm_id, _id_coincide_proyecto,
     _RE_INC_SUFIJO,
@@ -289,6 +291,100 @@ _RE_NESTING_PDF = re.compile(
 )
 
 
+@dataclass
+class _RetalDeMaterial:
+    """Retales de stock que la OT declara consumir para un material concreto."""
+
+    ids_piezas: list[str] = field(default_factory=list)
+    codigos: list[str] = field(default_factory=list)
+
+
+def _agregar_unicos(destino: list[str], valores) -> None:
+    """Añade preservando orden de aparición y sin duplicar."""
+    for v in valores:
+        if v not in destino:
+            destino.append(v)
+
+
+def _material_citado(obs: str, material: str, gama: str, acabado: str) -> bool:
+    """True si la observación nombra ese material+gama+acabado.
+
+    Cubre las observaciones que identifican el retal por tablero en vez de por
+    pieza ('retal utilizado de MDF LACA Blanco'). Se comparan las tres partes
+    sobre el texto normalizado (sin acentos, sin separadores, en minúsculas)
+    para que 'LACA'/'LAC' y 'Cadaqués'/'CADAQUES' no cuenten como distintos.
+    """
+    linea = norm_acabado(obs)
+    return (
+        norm_acabado(material) in linea
+        and norm_acabado(gama) in linea      # 'LAC' casa también con 'LACA'
+        and norm_acabado(acabado) in linea
+    )
+
+
+def _materiales_con_retal(
+    ot: OTData | None, piezas: list[Pieza]
+) -> dict[str, _RetalDeMaterial]:
+    """Materiales del DESPIECE que la OT declara cortar de retal de stock.
+
+    Devuelve {clave_comparable: _RetalDeMaterial}. Solo cuentan las
+    observaciones de CONSUMO (ver core/retales.py): 'Retales generados …'
+    describe lo que el proyecto deja, no de dónde sale una pieza, y no
+    justifica ningún '# Tableros 0'.
+
+    Una observación se atribuye a un material por dos vías:
+      - por pieza: el ID citado ('P1') existe en el DESPIECE, que es quien
+        sabe de qué material es esa pieza;
+      - por tablero: la observación nombra el material+gama+acabado.
+    """
+    if ot is None or not ot.observaciones_cnc:
+        return {}
+
+    consumos: list[RetalConsumido] = retales_consumidos(ot.observaciones_cnc)
+    if not consumos:
+        return {}
+
+    material_de_pieza = {
+        p.id.upper(): clave_comparable(p.material, p.gama, p.acabado)
+        for p in piezas
+    }
+    combos = {
+        clave_comparable(p.material, p.gama, p.acabado):
+            (p.material, p.gama, p.acabado)
+        for p in piezas
+    }
+
+    encontrados: dict[str, _RetalDeMaterial] = {}
+    for consumo in consumos:
+        atribuido: dict[str, list[str]] = {}
+        for id_pieza in consumo.ids_candidatos:
+            clave = material_de_pieza.get(id_pieza)
+            if clave is not None:
+                atribuido.setdefault(clave, []).append(id_pieza)
+        for clave, (mat, gama, acab) in combos.items():
+            if _material_citado(consumo.texto, mat, gama, acab):
+                atribuido.setdefault(clave, [])
+        for clave, ids in atribuido.items():
+            retal = encontrados.setdefault(clave, _RetalDeMaterial())
+            _agregar_unicos(retal.ids_piezas, ids)
+            _agregar_unicos(retal.codigos, consumo.codigos)
+    return encontrados
+
+
+def _nota_retal(clave_material: str, retal: _RetalDeMaterial) -> str:
+    """Nota informativa del 0 exculpado: qué se corta de qué retal."""
+    codigos = ", ".join(retal.codigos) if retal.codigos else "(sin código)"
+    n = len(retal.ids_piezas)
+    if n:
+        que = (
+            f"{n} pieza{'s' if n > 1 else ''} ({', '.join(retal.ids_piezas)}) "
+            f"cortada{'s' if n > 1 else ''}"
+        )
+    else:
+        que = "cortado"   # la OT cita el tablero, no la pieza
+    return f"{clave_material}: {que} de retal {codigos} — no consume tablero nuevo"
+
+
 def check_pdfs_nesting_vs_materiales(
     nombres_archivos: list[str],
     piezas: list[Pieza],
@@ -312,6 +408,21 @@ def check_pdfs_nesting_vs_materiales(
     no genera nesting y su combinación se descuenta de lo esperado. Solo se
     descuenta lo declarado como 0 explícitamente: un material ausente de la
     tabla de la OT (ver 'materiales_sin_cantidad', C-03) sigue exigiendo PDF.
+
+    Ese 0 sí admite PDF de nesting cuando la pieza se corta de un retal de
+    stock: hace falta el plano para la CNC, pero no se pide tablero nuevo.
+    '# Tableros' (materia prima a comprar) y planos de nesting (lo que ejecuta
+    el taller) son magnitudes distintas y se desacoplan exactamente ahí. Por
+    eso, cuando un material a 0 tiene PDF, se busca en las OBSERVACIONES CNC
+    de la OT una declaración de consumo de retal para ese material:
+
+      - si se localiza  → PASS con nota informativa de qué sale de qué retal;
+      - si no           → FAIL bloqueante, que es el caso que importa cazar:
+                          material con piezas, sin tablero pedido y sin retal
+                          que lo justifique = el taller se queda sin material.
+
+    'Retales generados …' NO exculpa: describe los sobrantes que deja este
+    proyecto, no el origen de una pieza (ver core/retales.py).
 
     Si la OT declara 0 tableros en total, el proyecto entero se corta de retal
     y el check SKIPea.
@@ -368,16 +479,31 @@ def check_pdfs_nesting_vs_materiales(
 
     faltan = sorted(esperados[c] for c in esperados.keys() - cubiertos.keys())
     # Nesting de un material a 0 tableros: la OT dice que ese tablero no se
-    # corta, pero alguien generó su nesting. Una de las dos cosas está mal.
-    a_cero_con_pdf = sorted(
-        despiece_por_clave[c] for c in cubiertos.keys() & despiece_por_clave.keys()
+    # corta, pero alguien generó su nesting. O la pieza sale de un retal de
+    # stock (y entonces el 0 y el plano son ambos correctos), o una de las dos
+    # cosas está mal.
+    claves_a_cero_con_pdf = {
+        c for c in cubiertos.keys() & despiece_por_clave.keys()
         if despiece_por_clave[c] in sin_tablero
+    }
+    retales = (_materiales_con_retal(ot, piezas)
+               if claves_a_cero_con_pdf else {})
+    justificados = {c: retales[c] for c in claves_a_cero_con_pdf if c in retales}
+    a_cero_con_pdf = sorted(
+        despiece_por_clave[c] for c in claves_a_cero_con_pdf - justificados.keys()
     )
+    notas_retal = [
+        _nota_retal(despiece_por_clave[c], justificados[c])
+        for c in sorted(justificados, key=lambda k: despiece_por_clave[k])
+    ]
     # Nesting de un material que el DESPIECE no usa: tablero de otro proyecto
     # en la carpeta, o acabado mal escrito en el nombre del PDF.
     ajenos = sorted(cubiertos[c] for c in cubiertos.keys() - despiece_por_clave.keys())
 
     if not faltan and not a_cero_con_pdf and not ajenos:
+        if notas_retal:
+            return CheckResult("C-04", desc, "PASS", " | ".join(notas_retal),
+                               True, _GRUPO)
         return _pass("C-04", desc, True, _GRUPO)
 
     partes = []
@@ -399,11 +525,16 @@ def check_pdfs_nesting_vs_materiales(
             f"{', '.join(sorted(no_atribuibles))}"
         )
     # Los descontados sin incidencia propia: contexto para que cuadre el
-    # recuento de combinaciones sin repetir los ya reportados arriba.
-    descontados_ok = sorted(sin_tablero - set(a_cero_con_pdf))
+    # recuento de combinaciones sin repetir los ya reportados arriba. Los
+    # exculpados por retal sí tienen nesting, así que van en su propia nota.
+    justificados_display = {despiece_por_clave[c] for c in justificados}
+    descontados_ok = sorted(
+        sin_tablero - set(a_cero_con_pdf) - justificados_display
+    )
     if descontados_ok:
         partes.append(
             f"Sin nesting por declarar 0 tableros en OT: "
             f"{', '.join(descontados_ok)}"
         )
+    partes.extend(notas_retal)
     return _fail("C-04", desc, " | ".join(partes), True, _GRUPO)

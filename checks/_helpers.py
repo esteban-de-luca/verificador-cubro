@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from core.modelos import CheckResult
+from core.modelos import DETALLE_PASS, CheckResult
 
 # Sufijo de incidencia (INC, INC2, …) sobre un ID ya normalizado (sin guiones).
 _RE_INC_SUFIJO = re.compile(r"INC\d*$")
@@ -40,7 +40,7 @@ def _es_incidencia(id_proyecto: str) -> bool:
 
 
 def _pass(id: str, desc: str, bloquea: bool, grupo: str) -> CheckResult:
-    return CheckResult(id, desc, "PASS", "Correcto", bloquea, grupo)
+    return CheckResult(id, desc, "PASS", DETALLE_PASS, bloquea, grupo)
 
 
 def _fail(id: str, desc: str, detalle: str, bloquea: bool, grupo: str) -> CheckResult:
