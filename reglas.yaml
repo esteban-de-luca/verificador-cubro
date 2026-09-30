@@ -536,6 +536,7 @@ extraccion:
     "tiradores integrados":            tiradores          # nombre oficial
     "tiradores integradros":           tiradores          # legacy typo — deprecar tras migración
     "prioridad de inc":                prioridad_inc
+    "corte de tablero laca":           corte_tablero_laca # "SI" corta en taller | "NO" pide a ALVIC
 
   # C-72: tipos de envío en cabecera (EXTRACCION) ↔ "Modelo de envío" (OT).
   # Mapea la clave canónica de la cabecera → texto exacto del OT.
@@ -559,3 +560,14 @@ extraccion:
     - {ancho: 200, alto: 800}
   baldas_3h_dims:
     - {ancho: 200, alto: 1200}
+
+  # C-85: corte de tablero LACA vs pedido a ALVIC.
+  # "CORTE DE TABLERO LACA" = SI → los DXFs de gama LAC dibujan el tablero
+  # de laca estándar que se corta en taller (2750×1220). = NO → las piezas se
+  # piden a ALVIC y el tablero dibujado es mayor (calibrado: 3050×1299).
+  # Solo aplica a DXFs cuya gama, extraída del nombre del archivo, sea LAC;
+  # otras gamas usan legítimamente tableros de otras medidas (WOO: 3050×1250).
+  corte_tablero_laca:
+    tablero_corte_ancho_mm: 2750
+    tablero_corte_alto_mm:  1220
+    tolerancia_mm:          1.0

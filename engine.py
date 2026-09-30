@@ -108,6 +108,7 @@ from checks.checks_extraccion import (
     check_altillos,
     check_hornacinas,
     check_mueble_nevera,
+    check_corte_tablero_laca,
 )
 from checks.checks_externos import check_csv_hubspot
 
@@ -130,7 +131,7 @@ class DatosProyecto:
     dxfs: list[DXFDoc] = field(default_factory=list)
     n_bultos_pdf: int | None = None      # None → SKIP C-50
     codigo_destino: str | None = None    # None → SKIP C-56
-    extraccion: ExtraccionData | None = None  # None → C-70..C-80 hacen SKIP, C-00 hace FAIL
+    extraccion: ExtraccionData | None = None  # None → C-70..C-85 hacen SKIP, C-00 hace FAIL
     naming: dict[str, tuple[str, str]] = field(default_factory=dict)  # naming_extraccion.csv cargado
     errores_extraccion: list[str] = field(default_factory=list)
 
@@ -352,7 +353,7 @@ def _ejecutar_checks(
     resultados.append(check_observaciones_reconocidas(ot, reglas_cnc))
     resultados.append(check_observaciones_no_reconocidas(ot, reglas_cnc))
 
-    # EXTRACCION (C-70..C-80): tercer testigo independiente
+    # EXTRACCION (C-70..C-85): tercer testigo independiente
     if datos.extraccion is None:
         motivo = "EXTRACCION ausente (C-00 reporta el fallo)"
         for cid, desc in (
@@ -370,6 +371,7 @@ def _ejecutar_checks(
             ("C-81", "Altillos EXTRACCION ↔ OT (total + desglose por dimensión)"),
             ("C-82", "Nº de hornacinas EXTRACCION ↔ OT"),
             ("C-83", "Mueble de nevera EXTRACCION ↔ OT"),
+            ("C-85", "Corte de tablero LACA (EXTRACCION) ↔ tamaño de tablero en DXFs LAC"),
         ):
             resultados.append(CheckResult(cid, desc, "SKIP", motivo, False, "Extraccion"))
     else:
@@ -387,6 +389,7 @@ def _ejecutar_checks(
         resultados.append(check_altillos(datos.extraccion, ot))
         resultados.append(check_hornacinas(datos.extraccion, ot))
         resultados.append(check_mueble_nevera(datos.extraccion, ot))
+        resultados.append(check_corte_tablero_laca(datos.extraccion, datos.dxfs, reglas))
 
     # Externos (C-84+)
     resultados.append(check_csv_hubspot(id_proyecto, csv_hubspot_existe))
