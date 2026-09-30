@@ -883,6 +883,68 @@ class TestExtraerTableroBbox:
 # Tests de extractor_ot
 # ===========================================================================
 
+class TestLeerDXFTableros:
+    """Tests de la detección de tableros de nesting (C-85)."""
+
+    def _dxf_con_polilineas(self, polilineas: list[tuple[str, str, list[tuple[float, float]]]]) -> io.BytesIO:
+        doc = ezdxf.new(dxfversion="R2010")
+        msp = doc.modelspace()
+        for tipo, layer, vertices in polilineas:
+            if layer not in doc.layers:
+                doc.layers.add(layer)
+            if tipo == "polyline":
+                msp.add_polyline2d(vertices, dxfattribs={"layer": layer})
+            else:
+                msp.add_lwpolyline(vertices, dxfattribs={"layer": layer})
+        stream = io.StringIO()
+        doc.write(stream)
+        buf = io.BytesIO(stream.getvalue().encode("cp1252", errors="replace"))
+        buf.seek(0)
+        return buf
+
+    def test_tablero_corte_laca_detectado(self):
+        """PASS: rectángulo 2750×1220 en 0_ANOTACIONES → un tablero."""
+        from core.extractor_dxf import leer_dxf
+        buf = self._dxf_con_polilineas([
+            ("polyline", "0_ANOTACIONES",
+             [(-2.5, 2.5), (-2.5, -1217.5), (2747.5, -1217.5), (2747.5, 2.5)]),
+        ])
+        doc = leer_dxf(buf, nombre="SP-23392_X_MDF_LACA_SEDA_T1.dxf")
+        assert len(doc.tableros) == 1
+        t = doc.tableros[0]
+        assert t["ancho"] == pytest.approx(2750.0)
+        assert t["alto"] == pytest.approx(1220.0)
+        assert t["layer"] == "0_ANOTACIONES"
+
+    def test_varios_tableros_en_un_dxf(self):
+        """PASS: dos tableros ALVIC lado a lado → dos entradas (SP-17735)."""
+        from core.extractor_dxf import leer_dxf
+        buf = self._dxf_con_polilineas([
+            ("polyline", "0_ANOTACIONES",
+             [(-2.5, 2.5), (-2.5, -1296.5), (3047.5, -1296.5), (3047.5, 2.5)]),
+            ("polyline", "0_ANOTACIONES",
+             [(4767.4, 2.5), (4767.4, -1296.5), (7817.4, -1296.5), (7817.4, 2.5)]),
+        ])
+        doc = leer_dxf(buf, nombre="SP-17735_X_MDF_LACA_ZAFIRO_T1.dxf")
+        assert len(doc.tableros) == 2
+        for t in doc.tableros:
+            assert t["ancho"] == pytest.approx(3050.0)
+            assert t["alto"] == pytest.approx(1299.0)
+
+    def test_piezas_no_cuentan_como_tablero(self):
+        """PASS: contornos de pieza (< umbral) no entran en tableros."""
+        from core.extractor_dxf import leer_dxf
+        buf = self._dxf_con_polilineas([
+            ("polyline", "10_12-CUTEXT-EM5-Z18",
+             [(0.0, 0.0), (798.0, 0.0), (798.0, 598.0), (0.0, 598.0)]),
+            # Rodapié: largo pero estrecho (lado menor < 1000)
+            ("polyline", "10_12-CORTAR_RODAPIE",
+             [(0.0, 0.0), (2400.0, 0.0), (2400.0, 75.0), (0.0, 75.0)]),
+        ])
+        doc = leer_dxf(buf, nombre="SP-23392_X_MDF_LACA_SEDA_T1.dxf")
+        assert doc.tableros == []
+
+
 class TestLeerOT:
 
     def _pdf_mock(self, texto: str, palabras: list[dict] | None = None):

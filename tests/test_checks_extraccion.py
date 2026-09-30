@@ -15,7 +15,7 @@ import pytest
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core.modelos import ExtraccionData, FilaExtraccion, OTData, Pieza
+from core.modelos import DXFDoc, ExtraccionData, FilaExtraccion, OTData, Pieza
 from core.extractor_extraccion import cargar_naming_default
 from core.reglas_loader import cargar_reglas
 from checks.checks_extraccion import (
@@ -33,6 +33,7 @@ from checks.checks_extraccion import (
     check_altillos,
     check_hornacinas,
     check_mueble_nevera,
+    check_corte_tablero_laca,
 )
 
 
@@ -871,3 +872,129 @@ class TestC83:
     def test_fail_extraccion_no_ot_si(self):
         r = check_mueble_nevera(_extr(), _ot(tiene_mueble_nevera=True))
         assert r.resultado == "FAIL"
+
+
+# ---------------------------------------------------------------------------
+# C-85: corte de tablero LACA (EXTRACCION) ↔ tamaño de tablero en DXFs LAC
+# ---------------------------------------------------------------------------
+
+def _dxf_laca(tableros, nombre="SP-23392_X_MDF_LACA_SEDA_T1.dxf",
+              gama="LAC", acabado="Seda"):
+    """DXFDoc mínimo con tableros [(ancho, alto), ...] en 0_ANOTACIONES."""
+    return DXFDoc(
+        nombre=nombre, tablero_num=1, material="MDF", gama=gama, acabado=acabado,
+        tableros=[{"ancho": a, "alto": h, "layer": "0_ANOTACIONES"}
+                  for a, h in tableros],
+    )
+
+
+class TestC85:
+    """Escenarios calibrados con proyectos reales:
+    SP-23392 (error real: NO + tablero de corte), EU-23661 (ALVIC 3050×1299
+    + WOOD 3050×1250 fuera de scope), SP-17735 (2 tableros ALVIC en un DXF).
+    """
+
+    def test_fail_no_con_tablero_de_corte(self, reglas):
+        """FAIL: EXTRACCION dice NO (ALVIC) pero el DXF LAC dibuja 2750×1220.
+
+        Caso real SP-23392 que motivó el check.
+        """
+        extr = _extr(corte_tablero_laca="NO")
+        dxfs = [_dxf_laca([(2750.0, 1220.0)])]
+        r = check_corte_tablero_laca(extr, dxfs, reglas)
+        assert r.resultado == "FAIL"
+        assert r.bloquea
+        assert "2750×1220" in r.detalle
+
+    def test_pass_no_con_tablero_alvic(self, reglas):
+        """PASS: NO (ALVIC) y tablero mayor que 2750×1220 (EU-23661)."""
+        extr = _extr(corte_tablero_laca="NO")
+        dxfs = [_dxf_laca([(3050.0, 1299.0)])]
+        r = check_corte_tablero_laca(extr, dxfs, reglas)
+        assert r.resultado == "PASS"
+
+    def test_pass_si_con_tablero_de_corte(self, reglas):
+        """PASS: SI (corte en taller) y tablero estándar 2750×1220."""
+        extr = _extr(corte_tablero_laca="SI")
+        dxfs = [_dxf_laca([(2750.0, 1220.0)]) ]
+        r = check_corte_tablero_laca(extr, dxfs, reglas)
+        assert r.resultado == "PASS"
+
+    def test_pass_si_con_tablero_girado(self, reglas):
+        """PASS: la orientación del rectángulo no importa (1220×2750)."""
+        extr = _extr(corte_tablero_laca="SI")
+        dxfs = [_dxf_laca([(1220.0, 2750.0)])]
+        r = check_corte_tablero_laca(extr, dxfs, reglas)
+        assert r.resultado == "PASS"
+
+    def test_fail_si_con_tablero_alvic(self, reglas):
+        """FAIL: SI (corte) pero el DXF dibuja un tablero ALVIC 3050×1299."""
+        extr = _extr(corte_tablero_laca="SI")
+        dxfs = [_dxf_laca([(3050.0, 1299.0)])]
+        r = check_corte_tablero_laca(extr, dxfs, reglas)
+        assert r.resultado == "FAIL"
+
+    def test_pass_no_con_varios_tableros_en_un_dxf(self, reglas):
+        """PASS: dos tableros ALVIC en el mismo DXF (SP-17735)."""
+        extr = _extr(corte_tablero_laca="NO")
+        dxfs = [_dxf_laca([(3050.0, 1299.0), (3050.0, 1299.0)])]
+        r = check_corte_tablero_laca(extr, dxfs, reglas)
+        assert r.resultado == "PASS"
+
+    def test_gama_no_lac_fuera_de_scope(self, reglas):
+        """PASS: el tablero WOOD 3050×1250 (> 2750×1220) NO se evalúa.
+
+        Solo la gama LAC entra en el checkpoint (EU-23661: la WOOD convive
+        con la LACA ALVIC sin generar falso positivo).
+        """
+        extr = _extr(corte_tablero_laca="NO")
+        dxfs = [
+            _dxf_laca([(3050.0, 1250.0)],
+                      nombre="EU-23661_X_MDF_WOOD_ROBLE_T1.dxf",
+                      gama="WOO", acabado="Roble"),
+            _dxf_laca([(3050.0, 1299.0)],
+                      nombre="EU-23661_X_MDF_LACA_ZAFIRO_T1.dxf",
+                      acabado="Zafiro"),
+        ]
+        r = check_corte_tablero_laca(extr, dxfs, reglas)
+        assert r.resultado == "PASS"
+
+    def test_skip_sin_dxfs_lac(self, reglas):
+        """SKIP: proyecto sin DXFs de gama LAC — el checkpoint no aplica."""
+        extr = _extr(corte_tablero_laca="SI")
+        dxfs = [_dxf_laca([(3050.0, 1250.0)],
+                          nombre="EU-23661_X_MDF_WOOD_ROBLE_T1.dxf",
+                          gama="WOO", acabado="Roble")]
+        r = check_corte_tablero_laca(extr, dxfs, reglas)
+        assert r.resultado == "SKIP"
+
+    def test_fail_clave_ausente_con_dxfs_lac(self, reglas):
+        """FAIL: hay DXFs LAC pero el EXTRACCION no declara la clave."""
+        extr = _extr()  # corte_tablero_laca = ""
+        dxfs = [_dxf_laca([(2750.0, 1220.0)])]
+        r = check_corte_tablero_laca(extr, dxfs, reglas)
+        assert r.resultado == "FAIL"
+        assert "no declara" in r.detalle
+
+    def test_fail_valor_no_reconocido(self, reglas):
+        """FAIL: valor distinto de SI/NO."""
+        extr = _extr(corte_tablero_laca="QUIZAS")
+        dxfs = [_dxf_laca([(2750.0, 1220.0)])]
+        r = check_corte_tablero_laca(extr, dxfs, reglas)
+        assert r.resultado == "FAIL"
+        assert "no reconocido" in r.detalle
+
+    def test_fail_dxf_lac_sin_tablero_detectado(self, reglas):
+        """FAIL: DXF LAC sin ningún tablero dibujado detectable."""
+        extr = _extr(corte_tablero_laca="SI")
+        dxfs = [_dxf_laca([])]
+        r = check_corte_tablero_laca(extr, dxfs, reglas)
+        assert r.resultado == "FAIL"
+        assert "no se detectó" in r.detalle
+
+    def test_acepta_si_con_tilde(self, reglas):
+        """PASS: 'SÍ' con tilde se normaliza a 'SI'."""
+        extr = _extr(corte_tablero_laca="Sí")
+        dxfs = [_dxf_laca([(2750.0, 1220.0)])]
+        r = check_corte_tablero_laca(extr, dxfs, reglas)
+        assert r.resultado == "PASS"

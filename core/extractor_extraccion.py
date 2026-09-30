@@ -262,6 +262,7 @@ def leer_extraccion(
 #: (ej. dos veces "Numero OT,5085"); guardar la primera es idempotente.
 _CAMPOS_STRING = frozenset({
     "numero_ot", "semana", "fecha_entrada", "fecha_salida", "prioridad_inc",
+    "corte_tablero_laca",
 })
 
 #: Campos enteros: se ACUMULAN (suman). En multi-material el sistema reparte

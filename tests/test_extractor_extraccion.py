@@ -409,3 +409,29 @@ class TestNaming:
     def test_cargar_naming_archivo_inexistente(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             cargar_naming(tmp_path / "no_existe.csv")
+
+
+# ---------------------------------------------------------------------------
+# Sección A: clave 'CORTE DE TABLERO LACA' (C-85)
+# ---------------------------------------------------------------------------
+
+class TestCorteTableroLaca:
+    def test_clave_en_misma_fila_que_semana(self, reglas):
+        """PASS: 'Semana,40,CORTE DE TABLERO LACA,NO' → campo = 'NO'.
+
+        En los CSV reales la clave comparte fila con 'Semana' (posición D2).
+        """
+        csv = CSV_BASE.replace("Semana,22", "Semana,22,CORTE DE TABLERO LACA,NO")
+        data = leer_extraccion(_csv_en_memoria(csv), reglas)
+        assert data.corte_tablero_laca == "NO"
+        assert data.semana == "22"
+        assert "CORTE DE TABLERO LACA" not in data.claves_desconocidas
+
+    def test_valor_si(self, reglas):
+        csv = CSV_BASE.replace("Semana,22", "Semana,22,CORTE DE TABLERO LACA,SI")
+        data = leer_extraccion(_csv_en_memoria(csv), reglas)
+        assert data.corte_tablero_laca == "SI"
+
+    def test_clave_ausente_deja_campo_vacio(self, reglas):
+        data = leer_extraccion(_csv_en_memoria(CSV_BASE), reglas)
+        assert data.corte_tablero_laca == ""

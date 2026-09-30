@@ -216,6 +216,12 @@ class DXFDoc:
     #: Estructura: {'xmin': float, 'xmax': float, 'ymin': float, 'ymax': float}.
     tablero_bbox: dict | None = None
 
+    #: Tableros de nesting dibujados en el DXF (puede haber varios por archivo).
+    #: Un tablero es una polilínea rectangular de 4 vértices de tamaño tablero.
+    #: Usado por C-85 para validar corte de tablero LACA vs pedido ALVIC.
+    #: Cada dict: {'ancho': float, 'alto': float, 'layer': str} (mm).
+    tableros: list[dict] = field(default_factory=list)
+
     @property
     def clave_material(self) -> str:
         return f"{self.material}_{self.gama}_{self.acabado}"
@@ -288,6 +294,10 @@ class ExtraccionData:
     estructura_pequena: int = 0
     # Prioridad solo aplicable a proyectos -INC
     prioridad_inc: str = ""                # "P1" | "P2" | ""
+    # "SI" → las piezas LAC se cortan de tablero de laca (tablero 2750×1220);
+    # "NO" → las piezas LAC se piden a ALVIC (tablero dibujado mayor).
+    # Vacío si la clave no aparece en el CSV (C-85 lo reporta).
+    corte_tablero_laca: str = ""           # "SI" | "NO" | ""
     # Tableros por combinación: {<COD>_tab: cantidad}
     # Ej. {"LAC_Zaf_tab": 2, "HPL_Pal_tab": 1}
     tableros_codificados: dict[str, int] = field(default_factory=dict)

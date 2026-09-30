@@ -44,6 +44,12 @@ LAYERS_CONTORNO_PIEZA = frozenset({
     "10_12-CONTORNO LACA",
 })
 
+#: Umbrales para reconocer el rectángulo del tablero de nesting (C-85).
+#: Ninguna pieza nesteada alcanza estas dimensiones; el tablero más pequeño
+#: en uso (laca de corte) mide 2750×1220 mm.
+TABLERO_MIN_LADO_MAYOR_MM = 2000.0
+TABLERO_MIN_LADO_MENOR_MM = 1000.0
+
 
 # ---------------------------------------------------------------------------
 # Parsing del nombre de archivo
@@ -431,6 +437,36 @@ def _extraer_tablero_bbox(entidades: list[dict]) -> dict | None:
             mejor = {"xmin": min(xs), "xmax": max(xs),
                      "ymin": min(ys), "ymax": max(ys)}
     return mejor
+def _extraer_tableros(entidades: list[dict]) -> list[dict]:
+    """
+    Detecta los tableros de nesting dibujados en el DXF.
+
+    Un tablero es una polilínea rectangular de exactamente 4 vértices cuyo
+    bounding box supera los umbrales TABLERO_MIN_*. Un DXF normalmente dibuja
+    un tablero, pero hay exports con varios en el mismo archivo (lado a lado),
+    así que se devuelven todos.
+
+    El tamaño del tablero distingue el modo de producción de la gama LACA
+    (C-85): 2750×1220 → se corta de tablero de laca en taller; mayor
+    (ej. 3050×1299) → las piezas se piden a ALVIC.
+
+    Cada entrada devuelta: {'ancho': float, 'alto': float, 'layer': str}.
+    """
+    tableros: list[dict] = []
+    for e in entidades:
+        if e["tipo"] not in ("POLYLINE", "LWPOLYLINE"):
+            continue
+        vertices = e.get("vertices") or []
+        if len(vertices) != 4:
+            continue
+        xs = [v[0] for v in vertices]
+        ys = [v[1] for v in vertices]
+        w = max(xs) - min(xs)
+        h = max(ys) - min(ys)
+        if (max(w, h) >= TABLERO_MIN_LADO_MAYOR_MM
+                and min(w, h) >= TABLERO_MIN_LADO_MENOR_MM):
+            tableros.append({"ancho": w, "alto": h, "layer": e["layer"]})
+    return tableros
 
 
 def _extraer_ids_piezas(entidades: list[dict]) -> list[str]:
@@ -492,6 +528,7 @@ def leer_dxf(origen: BinaryIO | Path | str, nombre: str | None = None) -> DXFDoc
     circulos = _extraer_circulos(entidades)
     piezas_contorno = _extraer_contornos_pieza(entidades)
     tablero_bbox = _extraer_tablero_bbox(entidades)
+    tableros = _extraer_tableros(entidades)
 
     return DXFDoc(
         nombre=nombre,
@@ -507,6 +544,7 @@ def leer_dxf(origen: BinaryIO | Path | str, nombre: str | None = None) -> DXFDoc
         piezas_contorno=piezas_contorno,
         conteos_tipo_por_layer=conteos_tipo_por_layer,
         tablero_bbox=tablero_bbox,
+        tableros=tableros,
     )
 
 

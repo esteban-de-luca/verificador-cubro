@@ -1,5 +1,5 @@
 """
-checks/checks_extraccion.py — C-70 a C-80: cruces del CSV EXTRACCION
+checks/checks_extraccion.py — C-70 a C-83 y C-85: cruces del CSV EXTRACCION
 contra OT y DESPIECE.
 
 El EXTRACCION es un tercer testigo independiente. Si discrepa con OT o
@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import unicodedata
 
-from core.modelos import CheckResult, ExtraccionData, OTData, Pieza
+from core.modelos import CheckResult, DXFDoc, ExtraccionData, OTData, Pieza
 from core.extractor_extraccion import cod_tab_a_clave_canonica
 from checks._helpers import _pass, _fail, _warn, _skip, _resultado, _es_incidencia
 
@@ -629,3 +629,92 @@ def check_mueble_nevera(extr: ExtraccionData, ot: OTData) -> CheckResult:
         f"({'tiene' if ot.tiene_mueble_nevera else 'no tiene'})",
         True, _GRUPO,
     )
+
+
+# ---------------------------------------------------------------------------
+# C-85: corte de tablero LACA (EXTRACCION) ↔ tamaño de tablero en DXFs LACA
+# ---------------------------------------------------------------------------
+
+def check_corte_tablero_laca(
+    extr: ExtraccionData,
+    dxfs: list[DXFDoc],
+    reglas: dict,
+) -> CheckResult:
+    """C-85: FAIL bloqueante. Modo de producción de la gama LACA.
+
+    La cabecera del EXTRACCION declara 'CORTE DE TABLERO LACA':
+      SI → las piezas LAC se cortan de tablero de laca en taller, y los DXFs
+           de gama LAC dibujan el tablero estándar (2750×1220 mm).
+      NO → las piezas LAC se piden a ALVIC, y el tablero dibujado en los DXFs
+           de gama LAC es mayor (ej. 3050×1299 mm).
+
+    Solo se evalúan los DXFs cuya gama, extraída del NOMBRE del archivo, es
+    LAC: otras gamas usan legítimamente tableros de otras medidas (p. ej.
+    WOOD dibuja 3050×1250) sin que eso signifique pedido a ALVIC.
+
+    Detecta el error real de producción en el que un proyecto marcado como
+    pedido a ALVIC llega al taller con DXFs nesteados en tablero de corte
+    (o viceversa), que sin este checkpoint pasaba inadvertido.
+    """
+    ID = "C-85"
+    DESC = "Corte de tablero LACA (EXTRACCION) ↔ tamaño de tablero en DXFs LAC"
+
+    dxfs_lac = [d for d in dxfs if d.gama == "LAC"]
+    if not dxfs_lac:
+        return _skip(ID, DESC, "Proyecto sin DXFs de gama LAC", _GRUPO)
+
+    valor = extr.corte_tablero_laca.strip().upper().replace("Í", "I")
+    if valor not in ("SI", "NO"):
+        detalle = (
+            f"Valor no reconocido en 'CORTE DE TABLERO LACA': '{valor}' "
+            "(se esperaba SI o NO)"
+            if valor else
+            "El EXTRACCION no declara 'CORTE DE TABLERO LACA' y el proyecto "
+            "tiene DXFs de gama LAC — no se puede validar el modo de corte"
+        )
+        return _fail(ID, DESC, detalle, True, _GRUPO)
+
+    cfg = reglas["extraccion"]["corte_tablero_laca"]
+    ref = sorted(
+        [float(cfg["tablero_corte_ancho_mm"]), float(cfg["tablero_corte_alto_mm"])],
+        reverse=True,
+    )
+    tol = float(cfg["tolerancia_mm"])
+
+    def _clasificar(ancho: float, alto: float) -> str:
+        dims = sorted([ancho, alto], reverse=True)
+        if all(abs(d - r) <= tol for d, r in zip(dims, ref)):
+            return "corte"
+        if dims[0] > ref[0] + tol or dims[1] > ref[1] + tol:
+            return "alvic"
+        return "desconocido"
+
+    esperado = "corte" if valor == "SI" else "alvic"
+    errores: list[str] = []
+    for dxf in dxfs_lac:
+        if not dxf.tableros:
+            errores.append(f"{dxf.nombre}: no se detectó ningún tablero dibujado")
+            continue
+        for t in dxf.tableros:
+            clase = _clasificar(t["ancho"], t["alto"])
+            if clase == esperado:
+                continue
+            medida = f"{t['ancho']:.0f}×{t['alto']:.0f} mm"
+            if valor == "SI":
+                errores.append(
+                    f"{dxf.nombre}: tablero {medida} — EXTRACCION dice SI "
+                    f"(corte de tablero) pero no es el tablero de laca "
+                    f"estándar {ref[0]:.0f}×{ref[1]:.0f}"
+                )
+            elif clase == "corte":
+                errores.append(
+                    f"{dxf.nombre}: tablero {medida} — EXTRACCION dice NO "
+                    f"(piezas pedidas a ALVIC) pero el DXF dibuja el tablero "
+                    f"de corte estándar {ref[0]:.0f}×{ref[1]:.0f}"
+                )
+            else:
+                errores.append(
+                    f"{dxf.nombre}: tablero {medida} — menor que el tablero "
+                    f"de laca estándar {ref[0]:.0f}×{ref[1]:.0f} (tamaño no reconocido)"
+                )
+    return _resultado(ID, DESC, errores, True, _GRUPO)
