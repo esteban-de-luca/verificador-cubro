@@ -168,6 +168,35 @@ class TestC71:
         r = check_recuentos_criticos(_extr(tensores=4), _ot(tiene_tensores=True))
         assert r.resultado == "PASS"
 
+    def test_ushape_no_cuenta_como_tirador_integrado(self):
+        """EU-24213: la OT lista 1 U-Shape + 11 Round; la EXTRACCION cuenta 11 integrados."""
+        ot = _ot(num_tiradores=12, modelos_tiradores=["U-Shape", "Round"],
+                 tiradores_por_modelo={"U-Shape": 1, "Round": 11})
+        assert check_recuentos_criticos(_extr(tiradores=11), ot).resultado == "PASS"
+        r = check_recuentos_criticos(_extr(tiradores=12), ot)
+        assert r.resultado == "FAIL" and "OT 11" in r.detalle and "12 en total" in r.detalle
+
+    def test_ushape_con_guion_no_separable_y_plantea(self):
+        ot = _ot(num_tiradores=24, modelos_tiradores=["U‑Shape", "Plantea", "Round"],
+                 tiradores_por_modelo={"U‑Shape": 9, "Plantea": 4, "Round": 11})
+        assert check_recuentos_criticos(_extr(tiradores=11), ot).resultado == "PASS"
+
+    def test_solo_ushape_no_compara(self):
+        """SP-23567: solo U-Shape en la OT (26) y 0 integrados en la EXTRACCION."""
+        ot = _ot(num_tiradores=26, modelos_tiradores=["U-Shape"], tiradores_por_modelo={"U-Shape": 26})
+        assert check_recuentos_criticos(_extr(tiradores=0), ot).resultado == "PASS"
+
+    def test_columna_mixta_no_compara(self):
+        """SP-22089: «Plantea/Square» en una columna (30) no se puede repartir: no se compara."""
+        ot = _ot(num_tiradores=32, modelos_tiradores=["Plantea/Square", "Square"],
+                 tiradores_por_modelo={"Plantea/Square": 30, "Square": 2})
+        assert check_recuentos_criticos(_extr(tiradores=19), ot).resultado == "PASS"
+
+    def test_sin_emparejar_con_ushape_no_compara(self):
+        """Si la OT no empareja modelo↔cantidad y hay U-Shape, el total no es comparable."""
+        ot = _ot(num_tiradores=12, modelos_tiradores=["U-Shape", "Round"], tiradores_por_modelo={})
+        assert check_recuentos_criticos(_extr(tiradores=11), ot).resultado == "PASS"
+
     def test_pass_si_ot_sin_tensores_info(self):
         """OT con tiene_tensores=None → no comparable."""
         r = check_recuentos_criticos(_extr(tensores=3), _ot(tiene_tensores=None))
