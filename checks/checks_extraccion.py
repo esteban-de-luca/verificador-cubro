@@ -76,6 +76,36 @@ def check_cabecera_ot(extr: ExtraccionData, ot: OTData) -> CheckResult:
 # C-71: recuentos críticos (piezas, tiradores, ventilación, tensores)
 # ---------------------------------------------------------------------------
 
+#: Modelos que la OT lista en «# Tiradores» pero la EXTRACCION no cuenta como
+#: «Tiradores integrados»: el U-Shape (frente fresado) y el Plantea (perfil de
+#: canto). Medido en producción: SP-23567 lista 26 U-Shape en la OT y la
+#: EXTRACCION da 0; EU-24213 lista 1 U-Shape + 11 Round y la EXTRACCION da 11.
+_TIRADORES_NO_INTEGRADOS = ("shape", "plantea")
+
+
+def _es_tirador_integrado(modelo: str) -> bool | None:
+    """True / False, o None si es un modelo mixto («Plantea/Square») con las dos clases."""
+    partes = [x for x in modelo.lower().split("/") if x.strip()] or [modelo.lower()]
+    integrados = {not any(x in parte for x in _TIRADORES_NO_INTEGRADOS) for parte in partes}
+    return integrados.pop() if len(integrados) == 1 else None
+
+
+def _tiradores_integrados_ot(ot: OTData) -> int | None:
+    """Tiradores de la OT comparables con «Tiradores integrados» de la EXTRACCION.
+
+    None (no comparable) si una columna mezcla modelos integrados y no integrados
+    («Plantea/Square»: la cantidad no se puede repartir, como en C-37) o si la OT no
+    permite emparejar modelo↔cantidad y alguno de sus modelos no es integrado."""
+    if ot.tiradores_por_modelo:
+        estados = {m: _es_tirador_integrado(m) for m in ot.tiradores_por_modelo}
+        if any(e is None for e in estados.values()):
+            return None
+        return sum(n for m, n in ot.tiradores_por_modelo.items() if estados[m])
+    if all(_es_tirador_integrado(m) is True for m in ot.modelos_tiradores):
+        return ot.num_tiradores
+    return None
+
+
 def check_recuentos_criticos(extr: ExtraccionData, ot: OTData) -> CheckResult:
     """C-71: FAIL bloqueante. Estos son los datos que ven CNC y embalaje."""
     desc = "Recuentos críticos (piezas, tiradores, ventilación, tensores) ↔ OT"
@@ -83,8 +113,10 @@ def check_recuentos_criticos(extr: ExtraccionData, ot: OTData) -> CheckResult:
 
     if ot.num_piezas and extr.piezas and extr.piezas != ot.num_piezas:
         errores.append(f"Piezas: EXTRACCION {extr.piezas} ≠ OT {ot.num_piezas}")
-    if ot.num_tiradores and extr.tiradores and extr.tiradores != ot.num_tiradores:
-        errores.append(f"Tiradores: EXTRACCION {extr.tiradores} ≠ OT {ot.num_tiradores}")
+    tir_ot = _tiradores_integrados_ot(ot)
+    if tir_ot and extr.tiradores and extr.tiradores != tir_ot:
+        nota = "" if tir_ot == ot.num_tiradores else f" (sin U-Shape ni Plantea; {ot.num_tiradores} en total)"
+        errores.append(f"Tiradores: EXTRACCION {extr.tiradores} ≠ OT {tir_ot}{nota}")
     if extr.rejillas_ventilacion != ot.num_ventilacion:
         errores.append(
             f"Rejillas ventilación: EXTRACCION {extr.rejillas_ventilacion} ≠ OT {ot.num_ventilacion}"
