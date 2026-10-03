@@ -1,6 +1,25 @@
 # verificador-cubro
 Verificador de Ficheros de corte v1.0
 
+## El motor de reglas como paquete (`verificador_cubro`)
+
+El dashboard (`cubro-dashboard`) verifica el paquete que genera su motor de fichero de corte
+ANTES de descargarlo, con estos mismos checks y reglas. Para no copiar el código, instala este
+repo como paquete, fijado a un commit:
+
+```
+verificador-cubro @ https://github.com/esteban-de-luca/verificador-cubro/archive/<commit>.tar.gz
+```
+
+- `pyproject.toml` empaqueta `core/`, `checks/`, `engine.py` y las reglas (`reglas.yaml`,
+  `reglas_cnc.yaml`), con solo las dependencias de verificar (ni Streamlit, ni Drive, ni Notion).
+  Streamlit Cloud sigue instalando desde `requirements.txt`, que tiene prioridad.
+- `verificador_cubro.verificar_archivos(archivos, id_proyecto)` recibe los ficheros en memoria
+  (`{nombre: bytes}`) y devuelve el informe como dict JSON con el mismo `estado` que la app
+  (`OK` / `ADVERTENCIAS` / `BLOQUEADO`). No escribe en el log ni en Notion.
+- **Al cambiar una regla aquí, el dashboard no la ve hasta que actualiza el commit** en su
+  `requirements.txt`: así cada versión del dashboard sabe con qué reglas verifica.
+
 ## Registro de verificaciones en Google Sheets
 
 Además del registro en Notion, cada verificación se añade como **una fila** a un

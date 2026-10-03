@@ -1,0 +1,31 @@
+# El motor de reglas del Verificador como paquete instalable (`pip install`), para usarlo desde
+# otros proyectos sin copiar el código. Solo lleva lo que necesita verificar: ni Streamlit, ni
+# Drive, ni Notion. La app de Streamlit Cloud sigue instalando desde `requirements.txt`, que
+# tiene prioridad sobre este fichero.
+
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "verificador-cubro"
+version = "1.0.0"
+description = "Motor de reglas del Verificador de ficheros de corte de CUBRO"
+requires-python = ">=3.10"
+dependencies = [
+    "ezdxf>=1.1.0",
+    "openpyxl>=3.1.0",
+    "pdfplumber>=0.10.0",
+    "pyyaml>=6.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["core", "checks", "verificador_cubro"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"engine.py" = "engine.py"
+"reglas.yaml" = "verificador_cubro/reglas.yaml"
+"reglas_cnc.yaml" = "verificador_cubro/reglas_cnc.yaml"
+
+[tool.hatch.build.targets.sdist]
+include = ["core", "checks", "verificador_cubro", "engine.py", "reglas.yaml", "reglas_cnc.yaml", "README.md"]
