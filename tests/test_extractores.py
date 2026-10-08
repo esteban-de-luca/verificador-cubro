@@ -1078,6 +1078,31 @@ class TestLeerOT:
             ot = leer_ot(io.BytesIO(b"x"))
         assert ot.tiradores_por_modelo == {"Round": 8}
 
+    def test_tiradores_por_modelo_reparte_columna_mixta(self):
+        """PASS: 'Tiradores Round Round/Plantea' + '# Tiradores 3 6/1' → {'Round': 9, 'Plantea': 1}
+        (OT del motor del Dashboard, 08/10/2026)."""
+        texto = (
+            "EU-99999\n"
+            "Tiradores Round Round/Plantea\n"
+            "# Tiradores 3 6/1\n"
+        )
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.num_tiradores == 10
+        assert ot.tiradores_por_modelo == {"Round": 9, "Plantea": 1}
+
+    def test_tiradores_columna_mixta_con_total_sigue_como_mixto(self):
+        """PASS: una OT de Grasshopper con 'Round/Plantea' y una sola cifra no se reparte."""
+        texto = (
+            "EU-99999\n"
+            "Tiradores Round/Plantea\n"
+            "# Tiradores 7\n"
+        )
+        with patch("core.extractor_ot.pdfplumber.open", return_value=self._pdf_mock(texto)):
+            ot = leer_ot(io.BytesIO(b"x"))
+        assert ot.num_tiradores == 7
+        assert ot.tiradores_por_modelo == {"Round/Plantea": 7}
+
     def test_tiradores_por_modelo_vacio_si_desbalance(self):
         """PASS: si nº modelos != nº cantidades, no se intenta emparejar."""
         texto = (
