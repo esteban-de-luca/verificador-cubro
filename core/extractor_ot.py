@@ -59,9 +59,11 @@ _RE_PESO = re.compile(
     r"peso\s+(?:estimado\s+)?(?:total|bruto)[:\s]+([\d,. ]+)\s*kg",
     re.IGNORECASE,
 )
-# "# Tiradores 8 6 12" (una columna por material)  o  "Tiradores: 13"
+# "# Tiradores 8 6 12" (una columna por material)  o  "Tiradores: 13".
+# Una columna con varios modelos («Round/Plantea») puede traer la cantidad de cada uno
+# separada igual: "# Tiradores 3 6/1" (motor del Dashboard, desde el 08/10/2026).
 _RE_TIRADORES = re.compile(
-    r"^(?:#\s*)?tiradores?[:\s]+([\d\s]+)$",
+    r"^(?:#\s*)?tiradores?[:\s]+([\d\s/]+)$",
     re.IGNORECASE | re.MULTILINE,
 )
 # Fila "Tiradores  Superline" (sin #) — captura modelo/s del tirador
@@ -384,18 +386,24 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
     ]
     modelos_tiradores: list[str] = list(dict.fromkeys(modelos_orden))
 
-    cantidades_orden: list[int] = (
-        [int(n) for n in m_tir.group(1).split()] if m_tir else []
+    # Una lista de cantidades por columna: [3] o, con «6/1», [6, 1].
+    cantidades_orden: list[list[int]] = (
+        [[int(n) for n in col.split("/") if n] for col in m_tir.group(1).split()]
+        if m_tir else []
     )
-    num_tiradores = sum(cantidades_orden)
+    num_tiradores = sum(sum(col) for col in cantidades_orden)
 
     # Empareja columna a columna modelo↔cantidad para C-37: en proyectos con
     # mezcla (p. ej. Plantea + Round), permite filtrar solo los modelos cuyo
-    # tirador genera geometría HANDCUT en DXF.
+    # tirador genera geometría HANDCUT en DXF. Una columna «Round/Plantea» con
+    # «6/1» se reparte por modelo; con una sola cifra queda como modelo mixto.
     tiradores_por_modelo: dict[str, int] = {}
     if len(modelos_orden) == len(cantidades_orden):
-        for modelo, n in zip(modelos_orden, cantidades_orden):
-            tiradores_por_modelo[modelo] = tiradores_por_modelo.get(modelo, 0) + n
+        for modelo, ns in zip(modelos_orden, cantidades_orden):
+            partes = [x.strip() for x in modelo.split("/") if x.strip()]
+            pares = list(zip(partes, ns)) if len(ns) > 1 and len(partes) == len(ns) else [(modelo, sum(ns))]
+            for m, n in pares:
+                tiradores_por_modelo[m] = tiradores_por_modelo.get(m, 0) + n
 
     # Tableros por material (tabla INFORMACION DE CORTE)
     tableros, materiales_sin_cantidad = _parsear_tabla_corte(texto)
