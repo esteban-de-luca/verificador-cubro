@@ -501,7 +501,14 @@ def check_layers_desuso(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
 # ---------------------------------------------------------------------------
 # - METOD: distancia entre cazoletas múltiplo exacto de 50 mm.
 # - PAX puerta normal (pieza ≥ 700 mm en eje bisagras): múltiplo de 32 mm.
-# - PAX altillo (pieza < 700 mm): cada cazoleta a 68 mm exactos del borde.
+# - PAX altillo (pieza < 700 mm): bisagras alineadas al CASCO (Esteban,
+#   14/10/2026) — van a 70 mm de los bordes del mueble, que mide la puerta
+#   estándar (276/376/476/576) + 4. En una puerta estándar cada cazoleta queda
+#   a 68 mm de su borde; una recrecida solo crece hacia ARRIBA, así que la de
+#   arriba se queda donde su estándar: una de 429 (recrecida del 376) lleva
+#   las cazoletas a 68 y 308 de su canto inferior (medido en SP-23135). El DXF
+#   no dice qué canto es el inferior: valen las dos orientaciones. Sin
+#   estándar del que recrecer (< 276), cada cazoleta a 68 del borde cercano.
 # - Pieza con 1 sola cazoleta: FAIL (toda puerta debe tener ≥ 2 bisagras).
 #
 # Tolerancia: _TOL_PASO (0.1 mm) en las comprobaciones de distancia/posición.
@@ -625,7 +632,9 @@ def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
 
       • METOD                    → distancia múltiplo exacto de 50 mm
       • PAX, pieza ≥ 700 mm      → distancia múltiplo exacto de 32 mm
-      • PAX, pieza < 700 mm      → cada cazoleta a 68 mm exactos del borde
+      • PAX, pieza < 700 mm      → bisagras alineadas al casco del alto
+        estándar (68 y estándar − 68 desde un mismo canto, en cualquiera de
+        las dos orientaciones); sin estándar (< 276), 68 del borde cercano
       • Pieza con 1 sola cazoleta → FAIL
 
     Bloquea: Sí.
@@ -646,6 +655,10 @@ def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     altillo_cfg = cfg.get("pax_altillo") or {}
     umbral_altillo: float = float(altillo_cfg.get("umbral_mm", 700))
     borde_altillo: float = float(altillo_cfg.get("borde_mm", 68))
+    # Defaults en código, como C-47: unas reglas recortadas no tumban el check.
+    altos_estandar_altillo: list[float] = sorted(
+        float(a) for a in (altillo_cfg.get("altos_estandar_mm") or (276, 376, 476, 576))
+    )
     configs_especiales: list[dict] = cfg.get("configuraciones_especiales") or []
 
     # Problemas recolectados por tipo de regla, para agruparlos en el detalle.
@@ -742,13 +755,33 @@ def check_distancia_bisagras(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
                 es_altillo_pax = (tipo == "PAX" and alto < umbral_altillo)
 
                 if es_altillo_pax:
-                    # Cada cazoleta a borde_altillo mm del borde más cercano
-                    # (± _TOL_PASO para absorber ruido de coma flotante).
-                    desfases = []
-                    for v in vals:
-                        nearest = min(v - edge_low, edge_high - v)
-                        if abs(nearest - borde_altillo) > _TOL_PASO:
-                            desfases.append(nearest - borde_altillo)
+                    # Bisagras alineadas al casco del alto estándar (el mayor
+                    # que no pase del alto real): a borde_altillo y a
+                    # (estándar − borde_altillo) desde un mismo canto — la
+                    # puerta solo se recrece hacia arriba. El DXF no dice qué
+                    # canto es el inferior, así que valen las dos
+                    # orientaciones y se informa la de menor desfase.
+                    estandar = next(
+                        (a for a in reversed(altos_estandar_altillo)
+                         if alto >= a - _TOL_PASO), None)
+                    desfases: list[float] = []
+                    if len(vals) == 2 and estandar is not None:
+                        rel = [v - edge_low for v in vals]
+                        patron = sorted((borde_altillo, estandar - borde_altillo))
+                        orientaciones = [
+                            [r - e for r, e in zip(rel, patron)],
+                            [r - e for r, e in zip(rel, sorted(alto - e for e in patron))],
+                        ]
+                        mejor = min(orientaciones, key=lambda ds: max(abs(d) for d in ds))
+                        desfases = [d for d in mejor if abs(d) > _TOL_PASO]
+                    else:
+                        # Sin estándar del que recrecer (< 276) o un nº de
+                        # cazoletas atípico: cada cazoleta a borde_altillo del
+                        # borde más cercano, la regla de siempre.
+                        for v in vals:
+                            nearest = min(v - edge_low, edge_high - v)
+                            if abs(nearest - borde_altillo) > _TOL_PASO:
+                                desfases.append(nearest - borde_altillo)
                     if desfases:
                         sufijo = "desfase de " + " y ".join(_fmt_mm(d) for d in desfases)
                         prob_altillo.append(_linea_puerta(

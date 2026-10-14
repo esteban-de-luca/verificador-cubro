@@ -956,6 +956,77 @@ class TestC44:
         )
         assert r.resultado == "PASS", r.detalle
 
+    def test_pass_pax_altillo_recrecido_alineado_al_casco(self, reglas):
+        # SP-23135: altillo de 429 mm, recrecido del estándar 376. Las cazoletas
+        # van alineadas al casco de 380 (la puerta solo crece hacia arriba):
+        # a 68 y a 376-68=308 del canto inferior — así salió de producción.
+        circs = [
+            _circulo(L7, 2443.0, -27733.2),  # 68mm de xmin=2375
+            _circulo(L7, 2683.0, -27733.2),  # 308mm de xmin (121 de xmax=2804)
+            _circulo(L6P, 2465.5, -27724.1, r=2.5),
+            _circulo(L6P, 2420.5, -27724.1, r=2.5),
+            _circulo(L6P, 2705.5, -27724.1, r=2.5),
+            _circulo(L6P, 2660.5, -27724.1, r=2.5),
+        ]
+        contornos = [_bbox(2375, 2804, -27756, -27510)]  # 429×246mm
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
+        assert r.resultado == "PASS", r.detalle
+
+    def test_pass_pax_altillo_recrecido_orientacion_invertida(self, reglas):
+        # El mismo altillo de 429 nesteado al revés (el canto inferior de la
+        # puerta en xmax): 68 y 308 medidos desde xmax=2804.
+        circs = [
+            _circulo(L7, 2736.0, -27733.2),  # 68mm de xmax
+            _circulo(L7, 2496.0, -27733.2),  # 308mm de xmax
+            _circulo(L6P, 2758.5, -27724.1, r=2.5),
+            _circulo(L6P, 2713.5, -27724.1, r=2.5),
+            _circulo(L6P, 2518.5, -27724.1, r=2.5),
+            _circulo(L6P, 2473.5, -27724.1, r=2.5),
+        ]
+        contornos = [_bbox(2375, 2804, -27756, -27510)]
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
+        assert r.resultado == "PASS", r.detalle
+
+    def test_fail_pax_altillo_recrecido_simetrico(self, reglas):
+        # El 68/68 simétrico de la PUERTA (no del casco) en un altillo de 429:
+        # la de arriba queda a 361 del canto inferior en vez de a 308 → desfase
+        # de +53 (el recrecido 429-376).
+        circs = [
+            _circulo(L7, 2443.0, -27733.2),  # 68mm de xmin ✓
+            _circulo(L7, 2736.0, -27733.2),  # 68mm de xmax ✗ (361 de xmin)
+            _circulo(L6P, 2465.5, -27724.1, r=2.5),
+            _circulo(L6P, 2420.5, -27724.1, r=2.5),
+            _circulo(L6P, 2758.5, -27724.1, r=2.5),
+            _circulo(L6P, 2713.5, -27724.1, r=2.5),
+        ]
+        contornos = [_bbox(2375, 2804, -27756, -27510)]
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
+        assert r.resultado == "FAIL"
+        assert "+53" in r.detalle or "-53" in r.detalle
+
+    def test_pass_pax_altillo_sin_estandar_sigue_simetrico(self, reglas):
+        # Por debajo del estándar más bajo (276) no hay casco del que recrecer:
+        # sigue la regla de siempre, cada cazoleta a 68 del borde más cercano.
+        circs = [
+            _circulo(L7, 2443.0, -27733.2),  # 68mm de xmin=2375
+            _circulo(L7, 2557.0, -27733.2),  # 68mm de xmax=2625
+            _circulo(L6P, 2465.5, -27724.1, r=2.5),
+            _circulo(L6P, 2420.5, -27724.1, r=2.5),
+            _circulo(L6P, 2579.5, -27724.1, r=2.5),
+            _circulo(L6P, 2534.5, -27724.1, r=2.5),
+        ]
+        contornos = [_bbox(2375, 2625, -27756, -27510)]  # 250×246mm
+        r = check_distancia_bisagras(
+            [_dxf_con_circulos(circs, piezas_contorno=contornos)], reglas
+        )
+        assert r.resultado == "PASS", r.detalle
+
     def test_pass_convivencia_altillo_y_puerta_grande(self, reglas):
         # Caso real EU-21742: convivencia de pieza grande PAX (cazoletas a
         # múltiplos de 32) y altillo PAX (cazoletas a 68mm del borde) en
