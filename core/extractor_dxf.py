@@ -41,6 +41,7 @@ _TIPOS_GEOMETRIA = frozenset({
 #: - 10_12-CONTORNO LACA  → MDF LAC con acabados no estándar (Agave, etc.)
 LAYERS_CONTORNO_PIEZA = frozenset({
     "10_12-CUTEXT-EM5-Z18",
+    "10_12-CUTEXT-MDF-EM5-Z18",  # MDF de tablero (Wood y Laca estándar) desde la S45 / 14/10/2026
     "10_12-CONTORNO LACA",
 })
 

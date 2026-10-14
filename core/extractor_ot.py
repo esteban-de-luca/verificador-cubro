@@ -119,6 +119,9 @@ _RE_FECHA_SALIDA = re.compile(
     r"fecha\s+salida\s+de\s+taller[:\s]+(\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4})",
     re.IGNORECASE,
 )
+# "Fecha 13/10/2026": el día en que se hizo el fichero (fila «Fecha» de los datos de producción).
+# No casa con «Fecha entrada a corte», «Fecha salida de taller» ni «Fecha máxima de salida».
+_RE_FECHA_FICHERO = re.compile(r"(?<![\w])fecha\s+(\d{1,2}/\d{1,2}/\d{4})", re.IGNORECASE)
 # "Cantidad de palets: 1 ud."  (acepta "ud.", "uds.", "u" o sin unidad)
 _RE_PALETS = re.compile(
     r"cantidad\s+de\s+palets[:\s]+(\d+)", re.IGNORECASE
@@ -473,6 +476,9 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
     m_fe = _RE_FECHA_ENTRADA.search(texto)
     fecha_entrada = m_fe.group(1) if m_fe else ""
 
+    m_ff = _RE_FECHA_FICHERO.search(texto)
+    fecha_fichero = m_ff.group(1) if m_ff else ""
+
     m_fs = _RE_FECHA_SALIDA.search(texto)
     fecha_salida = m_fs.group(1) if m_fs else ""
 
@@ -520,6 +526,7 @@ def leer_ot(origen: BinaryIO | Path | str) -> OTData:
         numero_ot=numero_ot,
         fecha_entrada=fecha_entrada,
         fecha_salida=fecha_salida,
+        fecha_fichero=fecha_fichero,
         num_palets=num_palets,
         modelo_envio=modelo_envio,
         metros_canto=metros_canto,

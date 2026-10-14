@@ -324,7 +324,7 @@ def _ejecutar_checks(
     resultados.append(check_layers_rhino_ausentes(datos.dxfs, reglas))
     resultados.append(check_layer_anotaciones(datos.dxfs, reglas))
     resultados.append(check_layer_biselar_lam_lin(datos.dxfs, reglas))
-    resultados.append(check_corte_perimetral(datos.dxfs, reglas))
+    resultados.append(check_corte_perimetral(datos.dxfs, reglas, ot))
     resultados.append(check_layer_desbaste_tirador(datos.dxfs, datos.piezas, reglas))
     resultados.append(check_handcut_vs_tiradores(datos.dxfs, ot, reglas))
     resultados.append(check_cajones_drill(datos.dxfs, datos.piezas, reglas))

@@ -224,6 +224,16 @@ layers:
     estandar: "10_12-CUTEXT-EM5-Z18"
     rodapie: "10_12-CORTAR_RODAPIE"
     laca_no_estandar: "10_12-CONTORNO LACA"
+    # Capas de corte del MDF que se corta de tablero (Wood y Laca de tablero), a petición de
+    # Carpintek (Esteban, 14/10/2026). El contrachapado (LAM/LIN) y la laca de ALVIC no cambian.
+    estandar_mdf: "10_12-CUTEXT-MDF-EM5-Z18"
+    rodapie_mdf: "10_12-CORTAR_RODAPIE_MDF"
+    # Desde cuándo son obligatorias (antes se aceptan las dos): Ventas desde la semana de corte 45
+    # (su «Fecha entrada a corte» en la OT es el lunes 02/11/2026); Tickets y PAX, los ficheros con
+    # «Fecha» de la OT desde el 14/10/2026.
+    arranque_mdf:
+      ventas_entrada_desde: "2026-11-02"
+      tickets_pax_desde: "2026-10-14"
     # Acabados LAC que usan el layer estándar CUTEXT (no CONTORNO LACA)
     lac_acabados_estandar:
       - Roto
@@ -280,6 +290,7 @@ bisagra_distancia:
   # Necesarias para asociar cada cazoleta a su pieza (point-in-bbox).
   layers_contorno_pieza:
     - "10_12-CUTEXT-EM5-Z18"   # estándar (PLY/MDF)
+    - "10_12-CUTEXT-MDF-EM5-Z18"  # MDF de tablero desde la S45 / 14/10/2026
     - "10_12-CONTORNO LACA"    # MDF LAC con acabados no estándar (Agave, etc.)
   # Régimen especial para altillos PAX: piezas con dimensión menor en el eje
   # de las bisagras < umbral_mm → bisagras alineadas al CASCO del alto
@@ -337,6 +348,7 @@ nesting_laca:
   # vacío, caerá a CUTEXT.
   layer_contorno_no_estandar: "10_12-CONTORNO LACA"
   layer_contorno_estandar: "10_12-CUTEXT-EM5-Z18"
+  layer_contorno_estandar_mdf: "10_12-CUTEXT-MDF-EM5-Z18"
   # Distancia esperada entre piezas vecinas según el régimen del proyecto.
   # Régimen pegado: exactamente 0 mm (±EPS). Régimen separado: mínimo 15 mm
   # (gap mayor a 15 mm es válido).

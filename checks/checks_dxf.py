@@ -7,6 +7,9 @@ también reciben las piezas del DESPIECE y/o datos de la OT.
 
 from __future__ import annotations
 
+import re
+from datetime import date
+
 from core.modelos import CheckResult, DXFDoc, OTData, Pieza
 from core.naming_material import GAMA_DISPLAY
 from checks._helpers import _pass, _fail, _warn, _skip, _resultado
@@ -140,16 +143,51 @@ def check_layer_biselar_lam_lin(dxfs: list[DXFDoc], reglas: dict) -> CheckResult
 # C-35: Layer de corte perimetral correcto según gama y acabado
 # ---------------------------------------------------------------------------
 
-def check_corte_perimetral(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
+def _fecha_ot(texto: str) -> date | None:
+    """«dd/mm/aaaa» de la OT como fecha; None si no se lee."""
+    m = re.match(r"\s*(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})\s*$", texto or "")
+    if not m:
+        return None
+    try:
+        return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+    except ValueError:
+        return None
+
+
+def capas_mdf_obligatorias(ot: OTData | None, reglas: dict) -> bool | None:
+    """Si el fichero ya tiene que llevar las capas de corte del MDF (Esteban, 14/10/2026).
+
+    - Ventas (la OT trae «Fecha entrada a corte», el lunes de su semana): desde la semana 45.
+    - Incidencias y PAX (ID «-INC» o numérico): por la «Fecha» del fichero, desde el 14/10/2026.
+    - Lo demás, o una OT que no se lee: None (se aceptan las dos, como antes del arranque).
+    """
+    arr = (reglas["layers"]["corte_perimetral"].get("arranque_mdf") or {})
+    if ot is None or not arr:
+        return None
+    entrada = _fecha_ot(ot.fecha_entrada)
+    if entrada is not None:
+        return entrada >= date.fromisoformat(str(arr["ventas_entrada_desde"]))
+    ident = (ot.id_proyecto or "").strip().lstrip("#")
+    if re.search(r"[-_]INC\d*$", ident, re.IGNORECASE) or ident.isdigit():
+        fecha = _fecha_ot(ot.fecha_fichero)
+        if fecha is not None:
+            return fecha >= date.fromisoformat(str(arr["tickets_pax_desde"]))
+    return None
+
+
+def check_corte_perimetral(dxfs: list[DXFDoc], reglas: dict, ot: OTData | None = None) -> CheckResult:
     """
     C-35: Cada DXF tiene el layer de corte perimetral correcto.
 
     Regla a nivel de proyecto:
     - Si TODOS los acabados LAC del proyecto son estándar (Roto/Crema/Blanco/Seda)
-      → cada LAC usa 10_12-CUTEXT-EM5-Z18
+      → cada LAC se corta de tablero (MDF): CUTEXT o, desde el arranque, CUTEXT-MDF
     - Si CUALQUIER acabado LAC del proyecto es no estándar (Agave, Marga, Noche…)
       → TODOS los LAC del proyecto usan 10_12-CONTORNO LACA (incluso Roto/Seda)
-    - LAM/LIN/WOO → siempre 10_12-CUTEXT-EM5-Z18
+    - LAM/LIN (contrachapado) → siempre 10_12-CUTEXT-EM5-Z18, nunca las capas del MDF
+    - WOO y LAC de tablero (MDF) → desde la semana 45 (Ventas) o el 14/10/2026 (Tickets y PAX),
+      10_12-CUTEXT-MDF-EM5-Z18 / 10_12-CORTAR_RODAPIE_MDF y ninguna geometría en las de siempre;
+      antes de esa fecha (o si la OT no lo dice) valen las dos (Esteban, 14/10/2026).
     Bloquea: Sí.
     """
     s = _si_no_dxfs("C-35", "Layer corte perimetral correcto por gama/acabado", dxfs)
@@ -159,7 +197,10 @@ def check_corte_perimetral(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     layer_estandar = cp["estandar"]
     layer_laca_no_std = cp["laca_no_estandar"]
     layer_rodapie = cp["rodapie"]
+    viejas = {layer_estandar, layer_rodapie}
+    nuevas = {cp.get("estandar_mdf"), cp.get("rodapie_mdf")} - {None}
     lac_std = {a.lower() for a in cp.get("lac_acabados_estandar", [])}
+    mdf_obligatorias = capas_mdf_obligatorias(ot, reglas) if nuevas else False
 
     proyecto_tiene_lac_no_std = any(
         dxf.gama == "LAC" and dxf.acabado.lower() not in lac_std
@@ -168,17 +209,30 @@ def check_corte_perimetral(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
 
     errores = []
     for dxf in dxfs:
-        if dxf.gama == "LAC":
-            layer_esperado = layer_laca_no_std if proyecto_tiene_lac_no_std else layer_estandar
-        else:
-            layer_esperado = layer_estandar
-
-        # Tableros solo de rodapié usan CORTAR_RODAPIE como corte perimetral
-        if layer_esperado not in dxf.layers and layer_rodapie not in dxf.layers:
-            errores.append(
-                f"{dxf.nombre} ({dxf.gama} {dxf.acabado}): "
-                f"falta layer corte '{layer_esperado}'"
-            )
+        etiqueta = f"{dxf.nombre} ({dxf.gama} {dxf.acabado})"
+        if dxf.gama == "LAC" and proyecto_tiene_lac_no_std:
+            # Tableros solo de rodapié usan CORTAR_RODAPIE como corte perimetral
+            rodapies = {layer_rodapie, cp.get("rodapie_mdf")}
+            if layer_laca_no_std not in dxf.layers and not rodapies & dxf.layers:
+                errores.append(f"{etiqueta}: falta layer corte '{layer_laca_no_std}'")
+            continue
+        es_mdf = dxf.material == "MDF" or dxf.gama in ("WOO", "LAC")
+        if not es_mdf:
+            if nuevas & dxf.layers:
+                errores.append(f"{etiqueta}: contrachapado en capa de MDF "
+                               f"({', '.join(sorted(nuevas & dxf.layers))}): va en '{layer_estandar}'")
+            elif not viejas & dxf.layers:
+                errores.append(f"{etiqueta}: falta layer corte '{layer_estandar}'")
+            continue
+        if mdf_obligatorias:
+            if viejas & dxf.layers:
+                errores.append(f"{etiqueta}: MDF en '{', '.join(sorted(viejas & dxf.layers))}': "
+                               f"desde la S45 (Ventas) y el 14/10/2026 (Tickets y PAX) va en "
+                               f"'{cp['estandar_mdf']}' / '{cp['rodapie_mdf']}'")
+            elif not nuevas & dxf.layers:
+                errores.append(f"{etiqueta}: falta layer corte '{cp['estandar_mdf']}'")
+        elif not (viejas | nuevas) & dxf.layers:
+            errores.append(f"{etiqueta}: falta layer corte '{layer_estandar}'")
     return _resultado("C-35", "Layer corte perimetral correcto por gama/acabado",
                       errores, True, _GRUPO)
 
@@ -998,6 +1052,8 @@ def check_nesting_laca(
     cfg = reglas["nesting_laca"]
     layer_no_std: str = cfg["layer_contorno_no_estandar"]
     layer_std: str = cfg["layer_contorno_estandar"]
+    # La laca de tablero también puede ir en la capa de corte del MDF (desde la S45 / 14/10/2026).
+    layer_std_mdf: str = cfg.get("layer_contorno_estandar_mdf", layer_std)
     gap_pegado: float = float(cfg["gap_pegado_mm"])
     gap_separado: float = float(cfg["gap_separado_mm"])
     eps: float = float(cfg["eps_mm"])
@@ -1016,6 +1072,7 @@ def check_nesting_laca(
     )
     gap_esperado = gap_pegado if proyecto_no_estandar else gap_separado
     layer_objetivo = layer_no_std if proyecto_no_estandar else layer_std
+    layers_objetivo = {layer_no_std} if proyecto_no_estandar else {layer_std, layer_std_mdf}
 
     errores: list[str] = []
     # DXFs LAC sin ningún contorno legible en los layers de corte perimetral:
@@ -1026,7 +1083,7 @@ def check_nesting_laca(
 
     for dxf in dxfs_lac:
         contornos = [
-            c for c in dxf.piezas_contorno if c["layer"] == layer_objetivo
+            c for c in dxf.piezas_contorno if c["layer"] in layers_objetivo
         ]
         # Fallback: si el layer esperado está vacío, prueba con el otro
         # layer de contorno (proyectos transitorios o DXFs de Roto/Crema en
@@ -1034,7 +1091,7 @@ def check_nesting_laca(
         if len(contornos) < 2:
             otros = [
                 c for c in dxf.piezas_contorno
-                if c["layer"] in (layer_std, layer_no_std)
+                if c["layer"] in (layer_std, layer_std_mdf, layer_no_std)
             ]
             if len(otros) >= 2:
                 contornos = otros
