@@ -160,6 +160,7 @@ class OTData:
     numero_ot: str = ""                  # "Nº de OT 5074" → "5074"
     fecha_entrada: str = ""              # "Fecha entrada a corte: 25/05/2026" → "25/05/2026"
     fecha_salida: str = ""               # "Fecha salida de taller: 05/06/2026" → "05/06/2026"
+    fecha_fichero: str = ""              # "Fecha 13/10/2026" → "13/10/2026" (cuándo se hizo el fichero)
     num_palets: int | None = None        # "Cantidad de palets: 1 ud." → 1; None si ausente
     modelo_envio: str = ""               # "Modelo de envío: Caja grande" → "Caja grande"
     metros_canto: float = 0.0            # "Mts lineales de corte: 62,32 mt" → 62.32
