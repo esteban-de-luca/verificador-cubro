@@ -383,6 +383,19 @@ margen_borde_tablero:
   eps_mm: 0.1
 
 # -----------------------------------------------------------------------------
+# MARCAS DE TORNILLO DEL TENSOR (Check C-48)
+# Desde el 06/11/2026 cada taladro Ø35 del tensor lleva 4 marcas Ø3 de 1 mm en
+# 3-DRILL-EM3-Z1, en las esquinas de un cuadrado de 32 × 32 centrado en él.
+# Nombre y profundidad cerrados con Carpintek. Solo avisa (WARN), no bloquea.
+# -----------------------------------------------------------------------------
+marcas_tensor:
+  layer_taladro: "TIRANTE-POCKET-EM5-Z12"
+  layer_marca: "3-DRILL-EM3-Z1"
+  offset_mm: 16          # distancia del centro de cada marca al del taladro, en X y en Y
+  radio_marca_mm: 1.5    # Ø3
+  tolerancia_mm: 0.5
+
+# -----------------------------------------------------------------------------
 # DESBASTE TIRADOR (Check C-36)
 # Mapping color tirador → layer DXF esperado
 # La clave _LIN aplica a cualquier pieza de gama LIN independientemente del color

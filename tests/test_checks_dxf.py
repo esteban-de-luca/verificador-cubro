@@ -29,6 +29,7 @@ from checks.checks_dxf import (
     check_nesting_laca,
     check_geometria_prohibida,
     check_margen_borde_tablero,
+    check_marcas_tensor,
 )
 
 
@@ -1711,3 +1712,74 @@ class TestC47:
         r = check_margen_borde_tablero([], reglas)
         assert r.id == "C-47"
         assert r.grupo == "DXF"
+
+
+
+# ---------------------------------------------------------------------------
+# C-48: Marcas de tornillo alrededor de cada taladro del tensor
+# ---------------------------------------------------------------------------
+
+LT = "TIRANTE-POCKET-EM5-Z12"
+LM = "3-DRILL-EM3-Z1"
+
+
+def _tensor(x, y, marcas=True, quitar=(), desplazar=0.0):
+    """Un taladro del tensor en (x, y) con sus 4 marcas a ±16 (menos `quitar`)."""
+    out = [{"layer": LT, "x": x, "y": y, "r": 17.5}]
+    if marcas:
+        for i, (dx, dy) in enumerate(((-16, -16), (-16, 16), (16, 16), (16, -16))):
+            if i not in quitar:
+                out.append({"layer": LM, "x": x + dx + desplazar, "y": y + dy, "r": 1.5})
+    return out
+
+
+def _dxf_tensor(circulos, num=1):
+    return DXFDoc(nombre=f"EU-90001_PLY LAMINADO SABLE_T{num}.dxf", tablero_num=num,
+                  material="PLY", gama="LAM", acabado="Sable", circulos=circulos)
+
+
+class TestC48:
+
+    def test_tres_taladros_con_sus_marcas_pasa(self, reglas):
+        c = _tensor(460.5, 35.75) + _tensor(460.5, 993.25) + _tensor(460.5, 1950.75)
+        r = check_marcas_tensor([_dxf_tensor(c)], reglas)
+        assert r.resultado == "PASS" and r.bloquea is False
+
+    def test_sin_tensor_no_aplica(self, reglas):
+        r = check_marcas_tensor([_dxf_tensor([{"layer": "7-POCKET-EM5-Z14", "x": 0, "y": 0, "r": 17.5}])], reglas)
+        assert r.resultado == "PASS" and "No aplica" in r.detalle
+
+    def test_sin_dxfs_skip(self, reglas):
+        assert check_marcas_tensor([], reglas).resultado == "SKIP"
+
+    def test_tensor_sin_marcas_solo_avisa(self, reglas):
+        c = _tensor(460.5, 35.75, marcas=False) + _tensor(460.5, 993.25, marcas=False)
+        r = check_marcas_tensor([_dxf_tensor(c, num=2)], reglas)
+        assert r.resultado == "WARN" and r.bloquea is False
+        assert "T2 — 2 de 2 taladros del tensor sin sus 4 marcas" in r.detalle
+
+    def test_falta_una_marca_avisa(self, reglas):
+        c = _tensor(100, 100) + _tensor(100, 1057.5, quitar=(2,))
+        r = check_marcas_tensor([_dxf_tensor(c)], reglas)
+        assert r.resultado == "WARN" and "1 de 2 taladros" in r.detalle
+
+    def test_marca_fuera_de_sitio_avisa_y_dentro_de_tolerancia_pasa(self, reglas):
+        mal = check_marcas_tensor([_dxf_tensor(_tensor(100, 100, desplazar=2.0))], reglas)
+        assert mal.resultado == "WARN"
+        bien = check_marcas_tensor([_dxf_tensor(_tensor(100, 100, desplazar=0.3))], reglas)
+        assert bien.resultado == "PASS"
+
+    def test_las_marcas_de_otro_taladro_no_cuentan(self, reglas):
+        # Dos taladros a 957,5 mm: las marcas de uno no pueden completar al otro.
+        c = _tensor(100, 100) + _tensor(100, 1057.5, marcas=False)
+        r = check_marcas_tensor([_dxf_tensor(c)], reglas)
+        assert r.resultado == "WARN" and "1 de 2 taladros" in r.detalle
+
+    def test_funciona_sin_la_seccion_en_reglas(self):
+        # Defaults en código: una caché de reglas anterior al despliegue no la trae.
+        r = check_marcas_tensor([_dxf_tensor(_tensor(0, 0, marcas=False))], {})
+        assert r.resultado == "WARN"
+
+    def test_seccion_en_reglas_yaml(self, reglas):
+        cfg = reglas["marcas_tensor"]
+        assert cfg["layer_marca"] == "3-DRILL-EM3-Z1" and cfg["offset_mm"] == 16
