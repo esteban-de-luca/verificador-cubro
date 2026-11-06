@@ -1395,3 +1395,73 @@ def check_margen_borde_tablero(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
             True, _GRUPO,
         )
     return _pass(ID, DESC, True, _GRUPO)
+
+
+# ---------------------------------------------------------------------------
+# C-48: Marcas de tornillo alrededor de cada taladro del tensor
+# ---------------------------------------------------------------------------
+# Desde el 06/11/2026 cada taladro Ø35 del tensor (TIRANTE-POCKET-EM5-Z12) lleva
+# cuatro marcas Ø3 de 1 mm de hondo en 3-DRILL-EM3-Z1, en las esquinas de un
+# cuadrado de 32 × 32 centrado en él (a ±16 mm en X y en Y): marcan dónde va
+# cada tornillo. Nombre y profundidad cerrados con Carpintek (Alex). El cuadrado
+# es simétrico, así que vale igual con la pieza girada o en espejo.
+# Solo AVISA (decisión de Esteban): un fichero hecho a mano o con el flujo
+# antiguo de Rhino puede no llevarlas.
+# ---------------------------------------------------------------------------
+
+def check_marcas_tensor(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
+    """C-48: Cada taladro del tensor lleva sus 4 marcas de tornillo. Bloquea: No.
+
+    Por cada círculo del taladro del tensor busca, en la capa de las marcas,
+    uno en cada esquina del cuadrado (±offset en X e Y, con tolerancia). El
+    detalle resume POR TABLERO cuántos taladros no tienen sus cuatro marcas.
+    """
+    ID = "C-48"
+    DESC = "Marcas de tornillo en cada taladro del tensor"
+    s = _si_no_dxfs(ID, DESC, dxfs)
+    if s:
+        return s
+
+    # Defaults en código, como C-47: un YAML de una caché anterior al
+    # despliegue no trae la sección y un KeyError tumbaría la verificación.
+    cfg = reglas.get("marcas_tensor") or {}
+    layer_taladro = cfg.get("layer_taladro", "TIRANTE-POCKET-EM5-Z12")
+    layer_marca = cfg.get("layer_marca", "3-DRILL-EM3-Z1")
+    offset = float(cfg.get("offset_mm", 16))
+    radio = float(cfg.get("radio_marca_mm", 1.5))
+    tol = float(cfg.get("tolerancia_mm", 0.5))
+
+    esquinas = [(sx * offset, sy * offset) for sx in (-1, 1) for sy in (-1, 1)]
+    lineas: list[str] = []
+    n_taladros = 0
+
+    for dxf in dxfs:
+        taladros = [c for c in dxf.circulos if c["layer"] == layer_taladro]
+        if not taladros:
+            continue
+        marcas = [c for c in dxf.circulos
+                  if c["layer"] == layer_marca and abs(c["r"] - radio) <= tol]
+        sin_marcas = 0
+        for t in taladros:
+            n_taladros += 1
+            completas = all(
+                any(abs(m["x"] - (t["x"] + dx)) <= tol
+                    and abs(m["y"] - (t["y"] + dy)) <= tol for m in marcas)
+                for dx, dy in esquinas
+            )
+            if not completas:
+                sin_marcas += 1
+        if sin_marcas:
+            lineas.append(
+                f"· {_etiqueta_acabado(dxf)} · T{dxf.tablero_num} — "
+                f"{sin_marcas} de {len(taladros)} taladros del tensor sin sus 4 marcas"
+            )
+
+    if lineas:
+        cabecera = (f"Cada taladro del tensor ({layer_taladro}) debe llevar 4 marcas "
+                    f"Ø{2 * radio:g} en {layer_marca}, a ±{offset:g} mm de su centro:")
+        return _warn(ID, DESC, "  \n".join([cabecera] + lineas), _GRUPO)
+    if n_taladros == 0:
+        return CheckResult(ID, DESC, "PASS",
+                           "No aplica: los DXFs no llevan tensor", False, _GRUPO)
+    return _pass(ID, DESC, False, _GRUPO)

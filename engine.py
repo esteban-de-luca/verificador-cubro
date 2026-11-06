@@ -77,6 +77,7 @@ from checks.checks_dxf import (
     check_nesting_laca,
     check_geometria_prohibida,
     check_margen_borde_tablero,
+    check_marcas_tensor,
 )
 from checks.checks_bultos import (
     check_num_bultos,
@@ -337,6 +338,7 @@ def _ejecutar_checks(
     resultados.append(check_nesting_laca(datos.dxfs, reglas, datos.piezas, ot))
     resultados.append(check_geometria_prohibida(datos.dxfs, reglas))
     resultados.append(check_margen_borde_tablero(datos.dxfs, reglas))
+    resultados.append(check_marcas_tensor(datos.dxfs, reglas))
 
     # Bultos (C-50..C-56)
     resultados.append(check_num_bultos(datos.filas_ean, datos.n_bultos_pdf))
