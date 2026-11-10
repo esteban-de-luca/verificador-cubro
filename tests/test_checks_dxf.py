@@ -8,7 +8,7 @@ import pytest
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core.modelos import DXFDoc, OTData, Pieza
+from core.modelos import DXFDoc, ExtraccionData, OTData, Pieza
 from core.reglas_loader import cargar_reglas
 from checks.checks_dxf import (
     check_layer_control,
@@ -1589,7 +1589,7 @@ class TestC47:
            gama="LAC", acabado="Celeste", tablero_num=1)]
         r = check_margen_borde_tablero(dxfs, reglas)
         assert r.resultado == "PASS"
-        assert "laca no estándar" in r.detalle
+        assert "pedida a ALVIC" in r.detalle
 
     def test_lac_estandar_sigue_bajo_la_regla(self, reglas):
         # Roto es estándar → régimen separado 15 mm → el margen sí aplica
@@ -1783,3 +1783,66 @@ class TestC48:
     def test_seccion_en_reglas_yaml(self, reglas):
         cfg = reglas["marcas_tensor"]
         assert cfg["layer_marca"] == "3-DRILL-EM3-Z1" and cfg["offset_mm"] == 16
+
+
+# ---------------------------------------------------------------------------
+# Régimen de la laca: manda 'CORTE DE TABLERO LACA' de la EXTRACCION (10/11/2026)
+# ---------------------------------------------------------------------------
+
+class TestRegimenLacaDeclarado:
+    """C-35, C-45 y C-47 siguen lo que declara la EXTRACCION; sin declaración, el color."""
+
+    SI = ExtraccionData(corte_tablero_laca="SI")
+    NO = ExtraccionData(corte_tablero_laca="NO")
+
+    def _lac(self, acabado, layer):
+        return _dxf(nombre=f"EU-99999_X_MDF_LACA_{acabado.upper()}_T1.dxf", material="MDF",
+                    gama="LAC", acabado=acabado, layers={"CONTROL", "0_ANOTACIONES", layer})
+
+    # --- C-35 ---
+    def test_c35_laca_de_color_cortada_de_tablero_o_retal(self, reglas):
+        # Marga cortada de un retal del taller: SI → capa de corte de tablero.
+        dxfs = [self._lac("Marga", L_CUTEXT)]
+        assert check_corte_perimetral(dxfs, reglas).resultado == "FAIL"  # por color, como siempre
+        assert check_corte_perimetral(dxfs, reglas, None, self.SI).resultado == "PASS"
+        mal = [self._lac("Marga", L_LACA)]
+        assert check_corte_perimetral(mal, reglas, None, self.SI).resultado == "FAIL"
+
+    def test_c35_ticket_de_laca_clara_pedida_a_alvic(self, reglas):
+        dxfs = [self._lac("Blanco", L_LACA)]
+        assert check_corte_perimetral(dxfs, reglas).resultado == "FAIL"
+        assert check_corte_perimetral(dxfs, reglas, None, self.NO).resultado == "PASS"
+        r = check_corte_perimetral([self._lac("Blanco", L_CUTEXT)], reglas, None, self.NO)
+        assert r.resultado == "FAIL" and "CORTE DE TABLERO LACA = NO" in r.detalle
+
+    def test_c35_sin_declaracion_decide_el_color(self, reglas):
+        for extr in (None, ExtraccionData(), ExtraccionData(corte_tablero_laca="quizá")):
+            assert check_corte_perimetral([self._lac("Blanco", L_CUTEXT)], reglas, None, extr).resultado == "PASS"
+            assert check_corte_perimetral([self._lac("Marga", L_LACA)], reglas, None, extr).resultado == "PASS"
+
+    # --- C-45 ---
+    def test_c45_laca_de_color_de_tablero_va_separada(self, reglas):
+        sep = [_dxf_lac("Marga", _piezas_en_fila(3, gap=15, layer=L_CUTEXT))]
+        assert check_nesting_laca(sep, reglas, extr=self.SI).resultado == "PASS"
+        peg = [_dxf_lac("Marga", _piezas_en_fila(3, gap=0, layer=L_CUTEXT))]
+        r = check_nesting_laca(peg, reglas, extr=self.SI)
+        assert r.resultado == "FAIL" and "CORTE DE TABLERO LACA = SI" in r.detalle
+
+    def test_c45_laca_clara_a_alvic_va_pegada(self, reglas):
+        peg = [_dxf_lac("Blanco", _piezas_en_fila(3, gap=0))]
+        assert check_nesting_laca(peg, reglas).resultado == "FAIL"
+        assert check_nesting_laca(peg, reglas, extr=self.NO).resultado == "PASS"
+        sep = [_dxf_lac("Blanco", _piezas_en_fila(3, gap=15))]
+        assert check_nesting_laca(sep, reglas, extr=self.NO).resultado == "FAIL"
+
+    # --- C-47 ---
+    def test_c47_sigue_la_declaracion(self, reglas):
+        a_ras = lambda acabado, layer: [_dxf_margen(
+            [_contorno(-2.5, -3997.5, 2350, 496, layer=layer)],
+            nombre=f"EU-23515_X_MDF_LACA_{acabado.upper()}_T1.dxf", gama="LAC", acabado=acabado, tablero_num=1)]
+        # Blanco a ALVIC: mesa a ras del borde, no aplica.
+        assert check_margen_borde_tablero(a_ras("Blanco", L_LACA), reglas).resultado == "FAIL"
+        assert check_margen_borde_tablero(a_ras("Blanco", L_LACA), reglas, self.NO).resultado == "PASS"
+        # Celeste de tablero: el margen de 5 mm sí aplica.
+        assert check_margen_borde_tablero(a_ras("Celeste", L_CUTEXT), reglas).resultado == "PASS"
+        assert check_margen_borde_tablero(a_ras("Celeste", L_CUTEXT), reglas, self.SI).resultado == "FAIL"

@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from datetime import date
 
-from core.modelos import CheckResult, DXFDoc, OTData, Pieza
+from core.modelos import CheckResult, DXFDoc, ExtraccionData, OTData, Pieza
 from core.naming_material import GAMA_DISPLAY
 from checks._helpers import _pass, _fail, _warn, _skip, _resultado
 
@@ -40,6 +40,49 @@ def _si_no_dxfs(id_check: str, desc: str, dxfs: list[DXFDoc]) -> CheckResult | N
     if not dxfs:
         return _skip(id_check, desc, "Sin DXFs disponibles", _GRUPO)
     return None
+
+#: Reserva de la lista de lacas estándar si el YAML no la trae (como C-47).
+_LAC_ESTANDAR = ("Roto", "Crema", "Blanco", "Seda")
+
+
+def regimen_laca(
+    dxfs: list[DXFDoc], reglas: dict, extr: ExtraccionData | None = None
+) -> tuple[bool, str]:
+    """Régimen de la laca del proyecto para C-35, C-45 y C-47: (pegada, motivo).
+
+    pegada=True  → la laca se pide cortada a ALVIC: piezas pegadas (gap 0) en
+                   '10_12-CONTORNO LACA', a ras del borde de la mesa.
+    pegada=False → la laca se corta de tablero (o de retal) en el taller:
+                   piezas separadas ≥ 15 mm en la capa de corte de tablero.
+
+    MANDA LO QUE DECLARA LA EXTRACCION ('CORTE DE TABLERO LACA', la misma clave
+    que lee Carpintek y que C-85 contrasta con el tamaño del tablero dibujado):
+    SI → de tablero, NO → ALVIC, sea cual sea el color. Así un Ticket de laca
+    clara que va a ALVIC, o una laca de color que se corta de un retal del
+    taller, se validan con el régimen con el que de verdad se producen
+    (Esteban, 10/11/2026). Solo si la EXTRACCION no lo declara (o no hay
+    EXTRACCION) se deduce del color, como siempre: cualquier acabado LAC fuera
+    de Roto/Crema/Blanco/Seda → pegada.
+    """
+    valor = (extr.corte_tablero_laca if extr is not None else "") or ""
+    valor = valor.strip().upper().replace("Í", "I")
+    if valor == "SI":
+        return False, "La EXTRACCION declara CORTE DE TABLERO LACA = SI"
+    if valor == "NO":
+        return True, "La EXTRACCION declara CORTE DE TABLERO LACA = NO (laca pedida a ALVIC)"
+    lac_std = {
+        a.lower()
+        for a in ((reglas.get("layers") or {}).get("corte_perimetral") or {})
+        .get("lac_acabados_estandar", _LAC_ESTANDAR)
+    }
+    no_std = sorted({
+        d.acabado for d in dxfs
+        if d.gama == "LAC" and d.acabado.lower() not in lac_std
+    })
+    if no_std:
+        return True, f"Proyecto contiene LAC no estándar ({', '.join(no_std)})"
+    return False, "Proyecto 100% LAC estándar"
+
 
 
 # ---------------------------------------------------------------------------
@@ -175,14 +218,18 @@ def capas_mdf_obligatorias(ot: OTData | None, reglas: dict) -> bool | None:
     return None
 
 
-def check_corte_perimetral(dxfs: list[DXFDoc], reglas: dict, ot: OTData | None = None) -> CheckResult:
+def check_corte_perimetral(
+    dxfs: list[DXFDoc], reglas: dict, ot: OTData | None = None,
+    extr: ExtraccionData | None = None,
+) -> CheckResult:
     """
     C-35: Cada DXF tiene el layer de corte perimetral correcto.
 
-    Regla a nivel de proyecto:
-    - Si TODOS los acabados LAC del proyecto son estándar (Roto/Crema/Blanco/Seda)
+    Regla a nivel de proyecto (ver `regimen_laca`: manda 'CORTE DE TABLERO LACA' de la
+    EXTRACCION y, si no lo declara, el color):
+    - Laca de tablero (SI, o todos los acabados LAC estándar Roto/Crema/Blanco/Seda)
       → cada LAC se corta de tablero (MDF): CUTEXT o, desde el arranque, CUTEXT-MDF
-    - Si CUALQUIER acabado LAC del proyecto es no estándar (Agave, Marga, Noche…)
+    - Laca a ALVIC (NO, o algún acabado LAC no estándar: Agave, Marga, Noche…)
       → TODOS los LAC del proyecto usan 10_12-CONTORNO LACA (incluso Roto/Seda)
     - LAM/LIN (contrachapado) → siempre 10_12-CUTEXT-EM5-Z18, nunca las capas del MDF
     - WOO y LAC de tablero (MDF) → desde la semana 45 (Ventas) o el 14/10/2026 (Tickets y PAX),
@@ -199,13 +246,9 @@ def check_corte_perimetral(dxfs: list[DXFDoc], reglas: dict, ot: OTData | None =
     layer_rodapie = cp["rodapie"]
     viejas = {layer_estandar, layer_rodapie}
     nuevas = {cp.get("estandar_mdf"), cp.get("rodapie_mdf")} - {None}
-    lac_std = {a.lower() for a in cp.get("lac_acabados_estandar", [])}
     mdf_obligatorias = capas_mdf_obligatorias(ot, reglas) if nuevas else False
 
-    proyecto_tiene_lac_no_std = any(
-        dxf.gama == "LAC" and dxf.acabado.lower() not in lac_std
-        for dxf in dxfs
-    )
+    proyecto_tiene_lac_no_std, motivo_laca = regimen_laca(dxfs, reglas, extr)
 
     errores = []
     for dxf in dxfs:
@@ -214,7 +257,7 @@ def check_corte_perimetral(dxfs: list[DXFDoc], reglas: dict, ot: OTData | None =
             # Tableros solo de rodapié usan CORTAR_RODAPIE como corte perimetral
             rodapies = {layer_rodapie, cp.get("rodapie_mdf")}
             if layer_laca_no_std not in dxf.layers and not rodapies & dxf.layers:
-                errores.append(f"{etiqueta}: falta layer corte '{layer_laca_no_std}'")
+                errores.append(f"{etiqueta}: falta layer corte '{layer_laca_no_std}' ({motivo_laca})")
             continue
         es_mdf = dxf.material == "MDF" or dxf.gama in ("WOO", "LAC")
         if not es_mdf:
@@ -1025,12 +1068,16 @@ def check_nesting_laca(
     reglas: dict,
     piezas: list[Pieza] | None = None,
     ot: OTData | None = None,
+    extr: ExtraccionData | None = None,
 ) -> CheckResult:
     """C-45: Disposición de piezas LAC en el nesting según régimen del proyecto.
 
-    Régimen NO ESTÁNDAR (proyecto con ≥1 acabado LAC fuera de la lista estándar):
+    El régimen lo da `regimen_laca`: manda 'CORTE DE TABLERO LACA' de la
+    EXTRACCION y, si no lo declara, el color de la laca.
+
+    Régimen PEGADO (laca a ALVIC: NO, o ≥1 acabado LAC fuera de la lista estándar):
       → todas las piezas LAC del proyecto pegadas (gap = 0 ± EPS).
-    Régimen ESTÁNDAR (todos los acabados LAC del proyecto son estándar):
+    Régimen SEPARADO (laca de tablero o de retal: SI, o todos los acabados estándar):
       → todas las piezas LAC separadas ≥ 15 mm (gap ≥ 15 − EPS). Gaps mayores
       son válidos.
 
@@ -1058,18 +1105,11 @@ def check_nesting_laca(
     gap_separado: float = float(cfg["gap_separado_mm"])
     eps: float = float(cfg["eps_mm"])
     solape_min: float = float(cfg["solape_vecindad"])
-    lac_std = {
-        a.lower()
-        for a in reglas["layers"]["corte_perimetral"].get("lac_acabados_estandar", [])
-    }
-
     dxfs_lac = [d for d in dxfs if d.gama == "LAC"]
     if not dxfs_lac:
         return _sin_dxfs_lac(ID, DESC, dxfs, piezas or [], ot)
 
-    proyecto_no_estandar = any(
-        d.acabado.lower() not in lac_std for d in dxfs_lac
-    )
+    proyecto_no_estandar, motivo_laca = regimen_laca(dxfs_lac, reglas, extr)
     gap_esperado = gap_pegado if proyecto_no_estandar else gap_separado
     layer_objetivo = layer_no_std if proyecto_no_estandar else layer_std
     layers_objetivo = {layer_no_std} if proyecto_no_estandar else {layer_std, layer_std_mdf}
@@ -1124,7 +1164,7 @@ def check_nesting_laca(
                     errores.append(
                         _formatear_error(
                             dxf, a, vecino, gap, gap_esperado, eje.upper(),
-                            proyecto_no_estandar, dxfs_lac, lac_std,
+                            proyecto_no_estandar, motivo_laca,
                         )
                     )
 
@@ -1204,8 +1244,7 @@ def _formatear_error(
     gap_esperado: float,
     eje: str,
     proyecto_no_estandar: bool,
-    dxfs_lac: list[DXFDoc],
-    lac_std: set[str],
+    motivo_laca: str,
 ) -> str:
     """Mensaje de error C-45 incluyendo el motivo del régimen."""
     wa = a["xmax"] - a["xmin"]
@@ -1213,17 +1252,14 @@ def _formatear_error(
     wb = b["xmax"] - b["xmin"]
     hb = b["ymax"] - b["ymin"]
     if proyecto_no_estandar:
-        no_std_acabs = sorted({
-            d.acabado for d in dxfs_lac if d.acabado.lower() not in lac_std
-        })
         motivo = (
-            f"Proyecto contiene LAC no estándar ({', '.join(no_std_acabs)}) "
+            f"{motivo_laca} "
             f"→ todas las piezas LAC deben ir pegadas (gap=0)."
         )
         esperado_txt = f"{gap_esperado:.0f}mm"
     else:
         motivo = (
-            "Proyecto 100% LAC estándar → todas las piezas LAC deben ir "
+            f"{motivo_laca} → todas las piezas LAC deben ir "
             "separadas al menos 15 mm."
         )
         esperado_txt = f"≥{gap_esperado:.0f}mm"
@@ -1252,7 +1288,9 @@ def _formatear_error(
 # quedan FUERA de esta regla — su bloque de piezas se nestea a ras del borde.
 # ---------------------------------------------------------------------------
 
-def check_margen_borde_tablero(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
+def check_margen_borde_tablero(
+    dxfs: list[DXFDoc], reglas: dict, extr: ExtraccionData | None = None
+) -> CheckResult:
     """C-47: Toda pieza a ≥ min_mm del borde del tablero. Bloquea: Sí.
 
     Por cada pieza se mide su margen mínimo (el peor de los 4 bordes) contra
@@ -1290,17 +1328,9 @@ def check_margen_borde_tablero(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
     min_mm = float(cfg.get("min_mm", 5))
     eps = float(cfg.get("eps_mm", 0.1))
 
-    # Régimen de la laca del proyecto, el mismo criterio que C-35/C-45:
-    # cualquier acabado LAC fuera de la lista estándar → régimen "pegado".
-    # La lista con reserva en código, por la misma razón que los defaults.
-    lac_std = {
-        a.lower()
-        for a in ((reglas.get("layers") or {}).get("corte_perimetral") or {})
-        .get("lac_acabados_estandar", ["Roto", "Crema", "Blanco", "Seda"])
-    }
-    lac_pegado = any(
-        d.gama == "LAC" and d.acabado.lower() not in lac_std for d in dxfs
-    )
+    # Régimen de la laca del proyecto, el mismo criterio que C-35/C-45
+    # (`regimen_laca`): manda la EXTRACCION y, si no lo declara, el color.
+    lac_pegado, _ = regimen_laca(dxfs, reglas, extr)
 
     def _cuenta(n: int, sing: str, plur: str) -> str:
         return f"1 pieza {sing}" if n == 1 else f"{n} piezas {plur}"
@@ -1383,7 +1413,7 @@ def check_margen_borde_tablero(dxfs: list[DXFDoc], reglas: dict) -> CheckResult:
         if n_lac_exentas:
             return CheckResult(
                 ID, DESC, "PASS",
-                "No aplica: proyecto con laca no estándar — C-45 exige las "
+                "No aplica: laca pedida a ALVIC — C-45 exige las "
                 "piezas LAC pegadas entre sí y ese bloque se nestea a ras "
                 "del borde del tablero",
                 True, _GRUPO,

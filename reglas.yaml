@@ -326,6 +326,10 @@ tipos_geometria:
 
 # -----------------------------------------------------------------------------
 # NESTING LACA (Check C-45)
+# El régimen (pegado / separado) lo decide `regimen_laca` (checks_dxf.py), igual
+# para C-35, C-45 y C-47: manda 'CORTE DE TABLERO LACA' de la EXTRACCION (SI →
+# de tablero o de retal, separado; NO → ALVIC, pegado) y, solo si no lo declara,
+# el color de la laca (Esteban, 10/11/2026).
 # Disposición geométrica de las piezas LAC en el nesting:
 # - Si el proyecto contiene CUALQUIER acabado LAC no estándar (Marga, Agave,
 #   Noche, etc.) → TODAS las piezas LAC del proyecto (incluidos Roto/Crema/
